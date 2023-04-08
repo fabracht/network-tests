@@ -1,0 +1,18 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: twamp-sender
+spec:
+  selector:
+    matchLabels:
+      app: twamp-sender
+  template:
+    metadata:
+      labels:
+        app: twamp-sender
+    spec:
+      containers:
+        - name: twamp-sender-arm
+          image: fabracht/twamp-sender:arm64-rev0.3
+      nodeSelector:
+        kubernetes.io/arch: arm64

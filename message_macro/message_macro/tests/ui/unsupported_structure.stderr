@@ -1,0 +1,5 @@
+error: Only named fields are supported
+ --> tests/ui/unsupported_structure.rs:4:25
+  |
+4 | struct UnsupportedStruct(u8, u16, u32);
+  |                         ^^^^^^^^^^^^^^

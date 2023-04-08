@@ -1,0 +1,263 @@
+use crate::error::CommonError;
+use core::fmt::{self};
+use core::ops::{Add, Sub};
+use core::time::Duration;
+use libc::{clock_gettime, gmtime, localtime, time, time_t, timespec, tm, CLOCK_REALTIME};
+use serde::{Deserialize, Serialize, Serializer};
+
+/// Seconds between Jan 1, 1900 and Jan 1, 1970
+pub const NTP_EPOCH: i64 = 2_208_988_800;
+/// Number of nanoseconds in 1 second
+const NSECS_CONVERSION: f64 = 1_000_000_000.0;
+/// NTP fraction conversion factor (2^32)
+const FRACTION_CONVERSION: f64 = 4_294_967_296.0;
+
+#[derive(Debug, Deserialize, Clone, Copy)]
+pub struct DateTime {
+    pub sec: u32,
+    pub nanos: u32,
+}
+
+impl fmt::Display for DateTime {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Calculate Julian day number
+        let jdn = (self.sec as f64 / 86400.0).floor() + 2440587.5;
+
+        // Calculate Gregorian calendar date
+        let z = (jdn + 0.5).floor();
+        let w = ((z - 1867216.25) / 36524.25).floor();
+        let x = (w / 4.0).floor();
+        let a = z + 1.0 + w - x;
+        let b = a + 1524.0;
+        let c = ((b - 122.1) / 365.25).floor();
+        let d = (365.25 * c).floor();
+        let e = ((b - d) / 30.6001).floor();
+        let day_frac = (30.6001 * e).floor();
+
+        let day = (b - d - day_frac) as u8;
+        let month = if e < 13.5 {
+            (e - 1.0) as u8
+        } else {
+            (e - 13.0) as u8
+        };
+        let year = if month as f64 > 2.5 {
+            (c - 4716.0) as u16
+        } else {
+            (c - 4715.0) as u16
+        };
+
+        let hour = ((self.sec % 86400) / 3600) as u8;
+        let min = ((self.sec % 3600) / 60) as u8;
+        let sec = (self.sec % 60) as u8;
+        let nanos = self.nanos as u32;
+        let nanos_str = format!("{:09}", nanos);
+
+        f.write_fmt(format_args!(
+            "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}.{}Z",
+            year, month, day, hour, min, sec, nanos_str
+        ))
+    }
+}
+
+impl serde::Serialize for DateTime {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+impl DateTime {
+    pub fn utc_now() -> DateTime {
+        let mut ts: timespec = timespec {
+            tv_sec: 0,
+            tv_nsec: 0,
+        };
+
+        unsafe { clock_gettime(CLOCK_REALTIME, &mut ts) };
+        DateTime {
+            sec: ts.tv_sec as u32,
+            nanos: ts.tv_nsec as u32,
+        }
+    }
+    //integer part being the number of seconds since the Unix epoch (January 1, 1970 at 00:00:00 UTC) and the fractional part being the number of nanoseconds.
+    pub fn timestamp(&self) -> f64 {
+        self.sec as f64 + (self.nanos as f64 / 1_000_000_000.0)
+    }
+
+    pub fn get_sec(&self) -> u32 {
+        self.sec
+    }
+
+    pub fn set_sec(&mut self, sec: u32) {
+        self.sec = sec;
+    }
+
+    pub fn get_nanos(&self) -> u32 {
+        self.nanos
+    }
+
+    pub fn set_nanos(&mut self, nanos: u32) {
+        self.nanos = nanos;
+    }
+
+    pub fn from_nanos(nanos: u64) -> DateTime {
+        DateTime {
+            sec: (nanos / 1_000_000_000) as u32,
+            nanos: (nanos % 1_000_000_000) as u32,
+        }
+    }
+
+    pub fn from_timespec(ts: timespec) -> DateTime {
+        DateTime {
+            sec: ts.tv_sec as u32,
+            nanos: ts.tv_nsec as u32,
+        }
+    }
+}
+
+impl Add<Duration> for DateTime {
+    type Output = DateTime;
+
+    fn add(self, other: Duration) -> DateTime {
+        let secs = self.sec + other.as_secs() as u32;
+        let nanos = self.nanos as u32 + other.subsec_nanos();
+        let secs_overflow = nanos / 1_000_000_000;
+        let nanos = nanos % 1_000_000_000;
+        DateTime {
+            sec: (secs + secs_overflow) as u32,
+            nanos: nanos,
+        }
+    }
+}
+
+impl Sub<Duration> for DateTime {
+    type Output = DateTime;
+
+    fn sub(self, other: Duration) -> DateTime {
+        let secs = (self.sec as i64 - other.as_secs() as i64).abs();
+        let nanos = (self.nanos as i32 - other.subsec_nanos() as i32).abs();
+        let nanos_overflow = if nanos < 0 { 1 } else { 0 };
+        let nanos = ((nanos + 1_000_000_000 * nanos_overflow) % 1_000_000_000) as u32;
+        DateTime {
+            sec: secs as u32,
+            nanos,
+        }
+    }
+}
+
+impl Sub<DateTime> for DateTime {
+    type Output = Duration;
+
+    fn sub(self, other: DateTime) -> Duration {
+        let secs_diff = self.sec as i64 - other.sec as i64;
+        let nanos_diff = self.nanos as i64 - other.nanos as i64;
+        let secs_diff = if nanos_diff < 0 {
+            secs_diff - 1
+        } else {
+            secs_diff
+        };
+        let nanos_diff = ((nanos_diff + 1_000_000_000) % 1_000_000_000) as u32;
+        Duration::new(secs_diff as u64, nanos_diff)
+    }
+}
+
+// In memory representation of an NTP timestamp
+/// See [RFC5905](https://www.rfc-editor.org/rfc/rfc5905)
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize)]
+#[repr(C)]
+pub struct NtpTimestamp {
+    /// The number of seconds since the NTP epoch, which is January 1, 1900.
+    pub seconds: u32,
+    /// The fractional part of a second, with a resolution of about 232 picoseconds (2^-32 seconds).
+    pub fraction: u32,
+}
+
+impl Into<&[u8]> for NtpTimestamp {
+    fn into(self) -> &'static [u8] {
+        todo!()
+    }
+}
+
+impl NtpTimestamp {
+    pub fn into_bytes(self) -> [u8; 8] {
+        let mut bytes = [0; 8];
+
+        // Convert seconds to big-endian byte order
+        bytes[0..4].copy_from_slice(&self.seconds.to_be_bytes());
+
+        // Convert fraction to big-endian byte order
+        bytes[4..8].copy_from_slice(&self.fraction.to_be_bytes());
+
+        bytes
+    }
+
+    pub fn try_from_be_bytes(bytes: &[u8; 8]) -> Result<Self, CommonError> {
+        let result = Self {
+            seconds: u32::from_be_bytes(bytes[0..4].try_into()?),
+            fraction: u32::from_be_bytes(bytes[4..8].try_into()?),
+        };
+        log::debug!("TFB {:?}", result);
+        Ok(Self {
+            seconds: u32::from_be_bytes(bytes[0..4].try_into()?),
+            fraction: u32::from_be_bytes(bytes[4..8].try_into()?),
+        })
+    }
+
+    /// Converts the system timestamp to the NTP timestamp format.
+    pub fn ntp_from_timespec(
+        sec_since_unix_epoch: u64,
+        nanosec_since_last_sec: u64,
+    ) -> NtpTimestamp {
+        let ntp_epoch_offset = NTP_EPOCH as u64;
+        let ntp_ts = (
+            (sec_since_unix_epoch + ntp_epoch_offset) as f64,
+            nanosec_since_last_sec as f64,
+        );
+        let seconds = ntp_ts.0 as u32;
+        let fraction = ((ntp_ts.1 / 1_000_000_000.0) * (2.0_f64.powi(32))) as u32;
+
+        NtpTimestamp { seconds, fraction }
+    }
+}
+
+impl From<DateTime> for NtpTimestamp {
+    fn from(dt: DateTime) -> Self {
+        let seconds = dt.timestamp() as u32 + NTP_EPOCH as u32;
+        let fraction = ((dt.get_nanos() as f64) / NSECS_CONVERSION * FRACTION_CONVERSION) as u32;
+        log::debug!("FN {}.{}", seconds, fraction);
+        Self { seconds, fraction }
+    }
+}
+
+impl TryFrom<NtpTimestamp> for DateTime {
+    type Error = CommonError;
+
+    fn try_from(timestamp: NtpTimestamp) -> Result<Self, CommonError> {
+        let seconds = timestamp.seconds as i64 - NTP_EPOCH;
+        let nsecs =
+            (timestamp.fraction as f64 * NSECS_CONVERSION / FRACTION_CONVERSION).round() as u32;
+
+        let datetime = DateTime {
+            sec: seconds as u32,
+            nanos: nsecs,
+        };
+
+        Ok(datetime)
+    }
+}
+
+fn _get_timezone_offset() -> i32 {
+    let mut now: time_t = 0;
+    unsafe {
+        time(&mut now as *mut _);
+        let local_tm: *mut tm = localtime(&now as *const _);
+        let gmt_tm: *mut tm = gmtime(&now as *const _);
+
+        let hour_offset = (*local_tm).tm_hour - (*gmt_tm).tm_hour;
+        let min_offset = (*local_tm).tm_min - (*gmt_tm).tm_min;
+
+        hour_offset * 60 + min_offset
+    }
+}

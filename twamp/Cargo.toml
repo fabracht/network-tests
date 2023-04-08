@@ -1,0 +1,22 @@
+[package]
+name = "twamp"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+env_logger = "0.10"
+libc = "0.2.139"
+log = "0.4"
+mio = { version = "0.8.5", features = ["os-poll", "net", "os-ext"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_yaml = "0.9.17"
+serde_json = "1.0"
+thiserror = "1.0"
+validator = { version = "0.16", features = ["derive"] }
+log4rs = "1.2.0"
+num-traits = "0.2"
+structopt = "0.3.26"
+common = { path = "../common" }
+message_macro = { path = "../message_macro/message_macro" }

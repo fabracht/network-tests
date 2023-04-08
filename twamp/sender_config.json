@@ -1,0 +1,12 @@
+{
+  "hosts": [
+    {
+      "ip": "10.211.55.7",
+      "port": 45571
+    }
+  ],
+  "mode": "LIGHT_SENDER",
+  "source_ip_address": "0.0.0.0:45572",
+  "collection_period": 2,
+  "packet_interval": 999
+}

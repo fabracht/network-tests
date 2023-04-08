@@ -1,0 +1,15 @@
+[package]
+name = "message_macro"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "macro_test"
+path = "./bin/macro_test.rs"
+
+[dependencies]
+message_macro_derive = { path = "../message_macro_derive" }
+
+[dev-dependencies]
+trybuild = { version = "1.0.49", features = ["diff"] }
+test-case = "3.0"

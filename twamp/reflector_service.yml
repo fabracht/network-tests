@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: twamp-reflector
+spec:
+  selector:
+    app: twamp-reflector
+  ports:
+    - name: twamp
+      protocol: UDP
+      port: 45571
+      targetPort: 45571

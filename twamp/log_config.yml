@@ -1,0 +1,24 @@
+appenders:
+  stdout_logger:
+    kind: console
+    encoder:
+      pattern: "{h({d(%Y-%m-%d %H:%M:%S %Z)(utc)} - {l} {m} -> {t}-{L}{n})}"
+  file_logger:
+    kind: rolling_file
+    path: "log/twamp.log"
+    encoder:
+      pattern: "{d(%Y-%m-%d %H:%M:%S)(utc)} - {h({l})}: {m} -> {f}-{L}{n}"
+    policy:
+      trigger:
+        kind: size
+        limit: 500kb
+      roller:
+        kind: fixed_window
+        base: 1
+        count: 10
+        pattern: "log/twamp-{}.log"
+root:
+  level: info
+  appenders:
+    - stdout_logger
+    - file_logger

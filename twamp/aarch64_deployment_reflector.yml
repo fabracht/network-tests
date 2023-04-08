@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: twamp-reflector
+spec:
+  selector:
+    matchLabels:
+      app: twamp-reflector
+  template:
+    metadata:
+      labels:
+        app: twamp-reflector
+    spec:
+      containers:
+        - name: twamp-reflector
+          image: fabracht/reflector-light:arm64-rev0.10
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 45571
+      nodeSelector:
+        kubernetes.io/arch: arm64

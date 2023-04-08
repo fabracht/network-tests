@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: twamp-sender
+spec:
+  selector:
+    matchLabels:
+      app: twamp-sender
+  template:
+    metadata:
+      labels:
+        app: twamp-sender
+    spec:
+      containers:
+        - name: twamp-sender
+          image: fabracht/twamp-light-sender:amd64-0.3
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 45571
+      nodeSelector:
+        kubernetes.io/arch: amd64

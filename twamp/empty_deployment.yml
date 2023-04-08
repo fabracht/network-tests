@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: my-pod
+spec:
+  containers:
+    - name: my-container
+      image: arm64v8/rust:latest
+  nodeSelector:
+      kubernetes.io/arch: arm64
