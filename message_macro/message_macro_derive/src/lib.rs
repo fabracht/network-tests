@@ -1,9 +1,9 @@
 extern crate proc_macro;
 use proc_macro::TokenStream;
-use quote::{__private::Span, quote, ToTokens};
+use quote::{__private::Span, quote, quote_spanned, ToTokens};
 use syn::{
-    parenthesized, parse_macro_input, spanned::Spanned, AngleBracketedGenericArguments, Data,
-    DeriveInput, Fields, LitInt, Path, Type,
+    parenthesized, parse_macro_input, parse_quote, spanned::Spanned,
+    AngleBracketedGenericArguments, Data, DeriveInput, Fields, LitInt, Path, Type,
 };
 
 #[proc_macro_derive(BeBytes, attributes(U8))]
@@ -27,7 +27,7 @@ pub fn derive_be_bytes(input: TokenStream) -> TokenStream {
                 let mut field_parsing = Vec::new();
                 let mut field_writing = Vec::new();
                 // initialize the bit sum to 0
-                let mut bit_sum = 0;
+                let mut u8_bit_sum = 0;
                 let mut non_bit_fields = 0;
                 let mut total_size = 0;
                 // initialize the last position to None
@@ -87,9 +87,9 @@ pub fn derive_be_bytes(input: TokenStream) -> TokenStream {
                             let mask = (1 << size) - 1;
 
                             // increase the bit sum by the size requested
-                            bit_sum += size;
+                            u8_bit_sum += size;
                             // check which byte we're in
-                            let byte_index = (bit_sum - 1) / 8;
+                            let byte_index = (u8_bit_sum - 1) / 8;
 
                             // add runtime check if the value requested is in the valid range for that type
                             field_limit_check.push(quote! {
@@ -117,6 +117,7 @@ pub fn derive_be_bytes(input: TokenStream) -> TokenStream {
                             }
                             // add the parsing code for the field
                             field_parsing.push(quote! {
+                            bit_sum += #size;
                             let #field_name = ((bytes[#byte_index] as #field_type) >> (7 - (#size + #pos - 1) as #field_type )) & (#mask as #field_type);
                         });
 
@@ -130,7 +131,13 @@ pub fn derive_be_bytes(input: TokenStream) -> TokenStream {
                                     #mask
                                 );
                             }
+                            if bytes.len() <= #byte_index {
+                                println!("Resizing bytes to {}", #byte_index + 1);
+                                bytes.resize(#byte_index + 1, 0);
+                            }
+                            println!("Bytes: {:?}", bytes);
                             bytes[#byte_index] |= (#field_name as u8) << (7 - (#size - 1) - #pos );
+
                         });
                             // last_pos = Some(pos);
                             total_size += size;
@@ -175,7 +182,7 @@ pub fn derive_be_bytes(input: TokenStream) -> TokenStream {
 
                                 // write the parse and writing code for the field
                                 parse_write_number(
-                                    &mut bit_sum,
+                                    &mut u8_bit_sum,
                                     field_size,
                                     &mut field_parsing,
                                     &field_name,
@@ -214,10 +221,9 @@ pub fn derive_be_bytes(input: TokenStream) -> TokenStream {
                                         || inner_tp.path.is_ident("i128")
                                         || inner_tp.path.is_ident("u128")
                                     {
-                                        let byte_index = bit_sum / 8;
-
                                         field_parsing.push(quote! {
-                                            let #field_name = Vec::from(&bytes[#byte_index..]);
+                                            let byte_index = bit_sum / 8;
+                                            let #field_name = Vec::from(&bytes[byte_index..]);
                                         });
                                         field_writing.push(quote! {
                                             bytes.extend_from_slice(&#field_name);
@@ -285,15 +291,18 @@ pub fn derive_be_bytes(input: TokenStream) -> TokenStream {
                                                 Some(value) => value,
                                                 None => continue,
                                             };
-                                            let byte_index = bit_sum / 8;
-                                            let end_byte_index = byte_index + field_size;
-                                            bit_sum += 8 * field_size;
+                                            // let byte_index = bit_sum / 8;
+                                            // let end_byte_index = byte_index + field_size;
+                                            // bit_sum += 8 * field_size;
                                             field_parsing.push(quote! {
-                                                let #field_name = if bytes[#byte_index..#end_byte_index] == [0_u8; #field_size] {
+                                                let byte_index = bit_sum / 8;
+                                                let end_byte_index = byte_index + #field_size;
+                                                let #field_name = if bytes[byte_index..end_byte_index] == [0_u8; #field_size] {
                                                     None
                                                 } else {
+                                                    bit_sum += 8 * #field_size;
                                                     Some(<#inner_tp>::from_be_bytes({
-                                                        let slice = &bytes[#byte_index..#end_byte_index];
+                                                        let slice = &bytes[byte_index..end_byte_index];
                                                         let mut arr = [0; #field_size];
                                                         arr.copy_from_slice(slice);
                                                         arr
@@ -302,7 +311,8 @@ pub fn derive_be_bytes(input: TokenStream) -> TokenStream {
                                                 };
                                             });
                                             field_writing.push(quote! {
-                                                bytes[#byte_index..#end_byte_index].copy_from_slice(&#field_name.unwrap_or(0).to_be_bytes());
+                                                bytes.extend_from_slice(&#field_name.unwrap_or(0).to_be_bytes());
+                                                // bytes[#byte_index..#end_byte_index].copy_from_slice(&#field_name.unwrap_or(0).to_be_bytes());
                                             });
                                         } else {
                                             let error = syn::Error::new(
@@ -314,6 +324,25 @@ pub fn derive_be_bytes(input: TokenStream) -> TokenStream {
                                         }
                                     }
                                 }
+                            }
+                            syn::Type::Path(tp)
+                                if tp.path.segments.len() > 0
+                                    && !is_primitive_type(&tp.path.segments[0].ident) =>
+                            {
+                                let parsed_type: syn::Type = parse_quote! { #tp};
+                                eprintln!("Parsed type: {:?}", parsed_type);
+                                // if field is a struct
+
+                                // bit_sum += 8 * field_size;
+                                field_parsing.push(quote_spanned! { field.span() =>
+                                    let byte_index = bit_sum / 8;
+                                    let end_byte_index = byte_index + core::mem::size_of::<#field_type>();
+                                    bit_sum += (end_byte_index - byte_index) * 8;
+                                    let #field_name = #field_type::try_from_be_bytes(&bytes[byte_index..end_byte_index])?;
+                                });
+                                field_writing.push(quote_spanned! { field.span() =>
+                                    bytes.extend_from_slice(&message_macro::BeBytes::to_be_bytes(&#field_name));
+                                });
                             }
                             _ => {
                                 let error_message = format!(
@@ -337,6 +366,7 @@ pub fn derive_be_bytes(input: TokenStream) -> TokenStream {
                 let expanded = quote! {
                     impl #my_trait_path for #name {
                         fn try_from_be_bytes(bytes: &[u8]) -> Result<Self, Box<dyn std::error::Error>> {
+                            let mut bit_sum = 0;
                             #(#field_parsing)*
                             Ok(Self {
                                 #( #struct_field_names: #struct_field_names, )*
@@ -344,12 +374,17 @@ pub fn derive_be_bytes(input: TokenStream) -> TokenStream {
                         }
 
                         fn to_be_bytes(&self) -> Vec<u8> {
-                            let mut bytes = vec![0; (#bit_sum + 7) / 8 + #non_bit_fields];
+                            // let mut bytes = vec![0; (#bit_sum + 7) / 8 + #non_bit_fields];
+                            let mut bytes = Vec::new();
                             #( {
                                 let #struct_field_names = self.#struct_field_names.to_owned();
                                 #field_writing
                             } )*
                             bytes
+                        }
+
+                        fn field_size(&self) -> usize {
+                            std::mem::size_of_val(self)
                         }
                     }
 
@@ -403,20 +438,26 @@ fn parse_write_number(
     field_type: &syn::Type,
     field_writing: &mut Vec<quote::__private::TokenStream>,
 ) {
-    let byte_index = *bit_sum / 8;
+    // let byte_index = *bit_sum / 8;
+    // let end_byte_index = byte_index + field_size;
 
-    let end_byte_index = byte_index + field_size;
     *bit_sum += 8 * field_size;
     field_parsing.push(quote! {
+        let byte_index = bit_sum / 8;
+        println!("byte_index: {}", byte_index);
+        bit_sum += 8 * #field_size;
+        let end_byte_index = byte_index + #field_size;
         let #field_name = <#field_type>::from_be_bytes({
-            let slice = &bytes[#byte_index..#end_byte_index];
+            let slice = &bytes[byte_index..end_byte_index];
+            println!("slice: {:?}", slice);
             let mut arr = [0; #field_size];
             arr.copy_from_slice(slice);
             arr
         });
     });
     field_writing.push(quote! {
-        bytes[#byte_index..#end_byte_index].copy_from_slice(&#field_name.to_be_bytes());
+        // bytes[#byte_index..#end_byte_index].copy_from_slice(&#field_name.to_be_bytes());
+        bytes.extend_from_slice(&#field_name.to_be_bytes());
     });
 }
 
@@ -553,4 +594,14 @@ fn check_fields(fields: &Fields) -> bool {
         }
     }
     false
+}
+
+// Helper function to check if a given identifier is a primitive type
+fn is_primitive_type(ident: &syn::Ident) -> bool {
+    let primitives = [
+        "u8", "u16", "u32", "u64", "u128", "usize", "i8", "i16", "i32", "i64", "i128", "isize",
+        "f32", "f64", "char", "bool", "str",
+    ];
+
+    primitives.iter().any(|&primitive| ident == primitive)
 }

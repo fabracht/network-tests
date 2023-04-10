@@ -1,4 +1,5 @@
 use libc::{iovec, msghdr, recvfrom, sa_family_t, sendmsg, sockaddr_in};
+use message_macro::BeBytes;
 use std::{
     io::IoSlice,
     net::{IpAddr, Ipv4Addr, SocketAddr},
@@ -8,14 +9,14 @@ use std::{
 
 use crate::time::DateTime;
 
-use super::{error::CommonError, message::Message};
+use super::error::CommonError;
 
 pub trait Socket<'a, T: AsRawFd> {
     fn send(&self, messages: msghdr) -> Result<(usize, DateTime), CommonError>;
     fn send_to(
         &self,
         address: &SocketAddr,
-        message: impl Message,
+        message: impl BeBytes,
     ) -> Result<(usize, DateTime), CommonError>;
     fn receive(&self, buffer: &mut [u8]) -> Result<(usize, DateTime), CommonError>;
     fn receive_from(&self, buffer: &mut [u8])
@@ -79,11 +80,11 @@ impl<'a> Socket<'a, CustomUdpSocket> for CustomUdpSocket {
     fn send_to(
         &self,
         address: &SocketAddr,
-        message: impl Message,
+        message: impl BeBytes,
     ) -> Result<(usize, DateTime), CommonError> {
         let fd = self.as_raw_fd();
         let mut utc_now: DateTime;
-        let bytes = message.to_bytes();
+        let bytes = message.to_be_bytes();
         let iov = [IoSlice::new(&bytes)];
         let result: isize;
         match address.ip() {

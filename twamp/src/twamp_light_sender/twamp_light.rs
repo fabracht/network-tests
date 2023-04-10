@@ -60,10 +60,7 @@ impl TwampLight {
         }
 
         set_timestamping_options(&mut my_socket)?;
-        // let value = libc::SOF_TIMESTAMPING_SOFTWARE
-        //     | libc::SOF_TIMESTAMPING_RX_SOFTWARE
-        //     | libc::SOF_TIMESTAMPING_TX_SOFTWARE;
-        // my_socket.set_socket_options(libc::SO_TIMESTAMPING, Some(value as i32))?;
+
         Ok(my_socket)
     }
 }

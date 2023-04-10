@@ -15,7 +15,7 @@ use serde::{ser::SerializeStruct, Deserialize, Serialize, Serializer};
 use std::net::SocketAddr;
 
 pub trait Message {
-    fn to_bytes(&self) -> Vec<u8>;
+    // fn to_bytes(&self) -> Vec<u8>;
     fn packet_results(&self) -> PacketResults;
 }
 

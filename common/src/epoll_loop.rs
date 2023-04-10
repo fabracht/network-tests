@@ -130,8 +130,7 @@ impl<T: AsRawFd + for<'a> Socket<'a, T>> EventLoopTrait<T> for LinuxEventLoop<T>
         Ok(new_token)
     }
 
-    fn add_duration(&mut self, time_spec: &Itimerspec) -> Result<Token, CommonError>
-where {
+    fn add_duration(&mut self, time_spec: &Itimerspec) -> Result<Token, CommonError> {
         let timer_fd = unsafe {
             let fd = libc::timerfd_create(libc::CLOCK_REALTIME, libc::TFD_NONBLOCK);
             let itimer_spec = itimerspec_to_libc(time_spec);
@@ -143,7 +142,7 @@ where {
         let new_token = self.generate_token();
         let mio_token = mio::Token(new_token.0);
 
-        log::error!(
+        log::debug!(
             "Added duration {:?} with token mio {:?}  self {:?}",
             time_spec,
             mio_token,

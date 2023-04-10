@@ -6,9 +6,10 @@ use common::{
 use message_macro::BeBytes;
 
 pub const CONST_PADDING: usize = 27;
+
 /// Unauthenticated TWAMP message as defined
 /// in [RFC4656 Section 4.1.2](https://www.rfc-editor.org/rfc/rfc4656#section-4.1.2)
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(BeBytes, Debug, PartialEq, Eq, Clone)]
 #[repr(C)]
 pub struct SenderMessage {
     /// Sender sequence number
@@ -40,21 +41,6 @@ impl TryFrom<&[u8]> for SenderMessage {
 }
 
 impl Message for SenderMessage {
-    fn to_bytes(&self) -> Vec<u8> {
-        let mut encoded = Vec::new();
-
-        let seq_num_bytes = self.sequence_number.to_be_bytes();
-        let timestamp_bytes = self.timestamp.into_bytes(); // Assuming NtpTimestamp has to_be_bytes() method
-        let error_estimate_bytes = self.error_estimate.to_be_bytes(); // Use the to_bytes() method for ErrorEstimate
-
-        encoded.extend_from_slice(&seq_num_bytes);
-        encoded.extend_from_slice(&timestamp_bytes);
-        encoded.extend_from_slice(&error_estimate_bytes);
-        encoded.extend_from_slice(&self.padding);
-
-        encoded
-    }
-
     fn packet_results(&self) -> PacketResults {
         PacketResults {
             sender_seq: self.sequence_number,
@@ -69,7 +55,7 @@ impl Message for SenderMessage {
 
 /// Unauthenticated TWAMP message as defined
 /// in [RFC5357 Section 4.2.1](https://www.rfc-editor.org/rfc/rfc5357.html#section-4.2.1)
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(BeBytes, Debug, PartialEq, Eq, Clone)]
 #[repr(C)]
 pub struct ReflectedMessage {
     /// Reflector sequence number
@@ -131,35 +117,6 @@ impl TryFrom<&[u8]> for ReflectedMessage {
 }
 
 impl Message for ReflectedMessage {
-    fn to_bytes(&self) -> Vec<u8> {
-        let mut encoded = Vec::new();
-
-        let reflector_seq_num_bytes = self.reflector_sequence_number.to_be_bytes();
-        let timestamp_bytes = self.timestamp.into_bytes(); // Assuming NtpTimestamp has to_be_bytes() method
-        let error_estimate_bytes = self.error_estimate.to_be_bytes(); // Use the to_bytes() method for ErrorEstimate
-        let mbz1_bytes = self.mbz1.to_be_bytes();
-        let receive_timestamp_bytes = self.receive_timestamp.into_bytes();
-        let sender_seq_num_bytes = self.sender_sequence_number.to_be_bytes();
-        let sender_timestamp_bytes = self.sender_timestamp.into_bytes();
-        let sender_error_estimate_bytes = self.sender_error_estimate.to_be_bytes();
-        let mbz2_bytes = self.mbz2.to_be_bytes();
-        let sender_ttl_bytes = [self.sender_ttl];
-
-        encoded.extend_from_slice(&reflector_seq_num_bytes);
-        encoded.extend_from_slice(&timestamp_bytes);
-        encoded.extend_from_slice(&error_estimate_bytes);
-        encoded.extend_from_slice(&mbz1_bytes);
-        encoded.extend_from_slice(&receive_timestamp_bytes);
-        encoded.extend_from_slice(&sender_seq_num_bytes);
-        encoded.extend_from_slice(&sender_timestamp_bytes);
-        encoded.extend_from_slice(&sender_error_estimate_bytes);
-        encoded.extend_from_slice(&mbz2_bytes);
-        encoded.extend_from_slice(&sender_ttl_bytes);
-        encoded.extend_from_slice(&self.padding);
-
-        encoded
-    }
-
     fn packet_results(&self) -> PacketResults {
         PacketResults {
             sender_seq: self.sender_sequence_number,
@@ -184,58 +141,3 @@ pub struct ErrorEstimate {
     pub scale: u8,
     pub multiplier: u8,
 }
-
-// impl ErrorEstimate {
-//     pub fn new(s_bit: bool, z_bit: bool, scale: u8, multiplier: u8) -> Result<Self, CommonError> {
-//         if multiplier == 0 {
-//             return Err(CommonError::NotEnoughBytes(
-//                 "Multiplier cannot be zero".to_string(),
-//             ));
-//         }
-
-//         Ok(Self {
-//             s_bit,
-//             z_bit,
-//             scale,
-//             multiplier,
-//         })
-//     }
-
-//     pub fn try_from_be_bytes(bytes: &[u8]) -> Result<Self, CommonError> {
-//         if bytes.len() != 2 {
-//             return Err(CommonError::NotEnoughBytes(
-//                 "Invalid byte length".to_string(),
-//             ));
-//         }
-
-//         let first_byte = bytes[0];
-//         let s_bit = (first_byte >> 7) & 0x01 == 1;
-//         let z_bit = (first_byte >> 6) & 0x01 == 1;
-//         let scale = first_byte & 0x3F;
-//         let multiplier = bytes[1];
-
-//         if multiplier == 0 {
-//             log::error!("Multiplier cannot be zero");
-//         }
-
-//         Ok(Self {
-//             s_bit,
-//             z_bit,
-//             scale,
-//             multiplier,
-//         })
-//     }
-
-//     pub fn to_bytes(&self) -> [u8; 2] {
-//         let mut first_byte: u8 = 0;
-
-//         if self.s_bit {
-//             first_byte |= 1 << 7;
-//         }
-
-//         first_byte |= self.scale & 0x3F; // Keep only the 6 least significant bits
-
-//         let encoded: [u8; 2] = [first_byte, self.multiplier];
-//         encoded
-//     }
-// }
