@@ -1,24 +1,19 @@
 extern crate proc_macro;
 use proc_macro::TokenStream;
-use quote::{__private::Span, quote, quote_spanned, ToTokens};
+use quote::{__private::Span, quote, quote_spanned};
 use syn::{
-    parenthesized, parse_macro_input, parse_quote, spanned::Spanned,
-    AngleBracketedGenericArguments, Data, DeriveInput, Fields, LitInt, Path, Type,
+    parenthesized, parse_macro_input, spanned::Spanned, AngleBracketedGenericArguments, Data,
+    DeriveInput, Fields, LitInt,
 };
 
 #[proc_macro_derive(BeBytes, attributes(U8))]
 pub fn derive_be_bytes(input: TokenStream) -> TokenStream {
-    eprintln!("Input: {:#?}", input);
+    // eprintln!("Input: {:#?}", input);
     let input = parse_macro_input!(input as DeriveInput);
-    eprintln!("Input: {:#?}", input);
+    // eprintln!("Input: {:#?}", input);
     let name = input.ident;
     let my_trait_path: syn::Path = syn::parse_str("BeBytes").unwrap();
-    if let Data::Struct(data) = &input.data {
-        let fields = &data.fields;
-        if check_fields(fields) {
-            eprintln!("Field implements BeBytes");
-        }
-    }
+
     match input.data {
         Data::Struct(data) => match data.fields {
             Fields::Named(fields) => {
@@ -153,9 +148,6 @@ pub fn derive_be_bytes(input: TokenStream) -> TokenStream {
                                 .to_compile_error(),
                             );
                         }
-                        let tk = field_type.into_token_stream().to_string();
-                        eprintln!("tk: {}", tk);
-
                         // supported types
                         match field_type {
                             // if field is number type, we apply be bytes conversion
@@ -281,7 +273,6 @@ pub fn derive_be_bytes(input: TokenStream) -> TokenStream {
                                             || inner_tp.path.is_ident("i128")
                                             || inner_tp.path.is_ident("u128")
                                         {
-                                            // eprintln!("Inner Option type: {:?}", inner_tp);
                                             // get the size of the number in bytes
                                             let field_size = match get_number_size(
                                                 &inner_type,
@@ -329,11 +320,6 @@ pub fn derive_be_bytes(input: TokenStream) -> TokenStream {
                                 if tp.path.segments.len() > 0
                                     && !is_primitive_type(&tp.path.segments[0].ident) =>
                             {
-                                let parsed_type: syn::Type = parse_quote! { #tp};
-                                eprintln!("Parsed type: {:?}", parsed_type);
-                                // if field is a struct
-
-                                // bit_sum += 8 * field_size;
                                 field_parsing.push(quote_spanned! { field.span() =>
                                     let byte_index = bit_sum / 8;
                                     let end_byte_index = byte_index + core::mem::size_of::<#field_type>();
@@ -573,27 +559,6 @@ fn solve_for_inner_type(input: &syn::TypePath, identifier: &str) -> Option<syn::
     };
 
     Some(inner_type.clone())
-}
-
-fn is_be_bytes(path: &Path) -> bool {
-    let segments = &path.segments;
-    for segment in segments {
-        if segment.ident == "BeBytes" {
-            return true;
-        }
-    }
-    false
-}
-
-fn check_fields(fields: &Fields) -> bool {
-    for field in fields.iter() {
-        if let Type::Path(type_path) = &field.ty {
-            if is_be_bytes(&type_path.path) {
-                return true;
-            }
-        }
-    }
-    false
 }
 
 // Helper function to check if a given identifier is a primitive type
