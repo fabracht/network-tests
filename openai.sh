@@ -13,7 +13,7 @@ then
 fi
 
 # Set your API key as an environment variable
-export OPENAI_API_KEY=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
+export OPENAI_API_KEY=$(cat ~/.openai/api_key.txt)
 
 # Set the parameters for the API request
 MODEL="text-davinci-002"
