@@ -55,13 +55,13 @@ impl PacketResults {
     }
     pub fn calculate_owd_forward(&self) -> Option<Duration> {
         let duration = self.t2? - self.t1;
-        log::info!("OWD Forward Duration: {:?}", duration);
+        log::debug!("OWD Forward Duration: {:?}", duration);
 
         Some(duration)
     }
     pub fn calculate_owd_backward(&self) -> Option<Duration> {
         let duration = self.t4? - self.t3?;
-        log::info!("OWD Backward Duration: {:?}", duration);
+        log::debug!("OWD Backward Duration: {:?}", duration);
         Some(duration)
     }
     /// Calculates the Remote Processing Delay, which is the time the packet took to be processed on the server

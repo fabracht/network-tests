@@ -25,7 +25,7 @@ impl Session {
     pub fn new(host: &Host) -> Self {
         let host = SocketAddr::try_from(host).unwrap();
         Self {
-            socket_address: host.clone(),
+            socket_address: host,
             seq_number: AtomicU32::new(0),
             results: Rc::new(RwLock::new(Vec::new())),
         }
@@ -33,7 +33,7 @@ impl Session {
 
     pub fn from_socket_address(host: &SocketAddr) -> Self {
         Self {
-            socket_address: host.clone(),
+            socket_address: *host,
             seq_number: AtomicU32::new(0),
             results: Rc::new(RwLock::new(Vec::new())),
         }
@@ -86,7 +86,7 @@ impl Session {
         //     / 2;
         // let offset_duration = DateTime::from_nanos(ntp.into());
         // log::error!("Symmetric offset = {}", ntp);
-        let result = TimestampsResult {
+        TimestampsResult {
             session: SessionPackets {
                 address: self.socket_address,
                 packets: Some(vec![PacketResults {
@@ -99,11 +99,10 @@ impl Session {
                 }]),
             },
             error: None,
-        };
-        result
+        }
     }
 
-    pub fn analyze_packet_loss<'a>(&'a self) -> Result<(u32, u32, u32), CommonError> {
+    pub fn analyze_packet_loss<'a>(&'_ self) -> Result<(u32, u32, u32), CommonError> {
         let read_lock = self.results.read().map_err(|_| CommonError::Lock)?;
         let mut forward_loss = 0;
         let mut backward_loss = 0;

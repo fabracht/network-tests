@@ -11,6 +11,8 @@
 //! twamp = "*"
 //! ```
 
+use error::CommonError;
+
 pub mod error;
 
 #[cfg(target_os = "linux")]
@@ -44,7 +46,7 @@ pub trait Strategy<R: TestResult, E: std::error::Error> {
 }
 
 pub trait TestResult: Send {
-    fn status(&self) -> Result<(), ()> {
+    fn status(&self) -> Result<(), CommonError> {
         Ok(())
     }
 }

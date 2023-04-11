@@ -31,7 +31,7 @@ impl App {
 
     fn run(&self) -> Result<(), CommonError> {
         // your app logic goes here
-        println!("{:?}", self.config);
+        log::info!("{:?}", self.config);
         let twamp = Twamp::new(self.config.clone());
         let mut strategy = twamp.generate()?;
         let result = strategy.execute()?;

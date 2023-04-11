@@ -72,7 +72,7 @@ impl From<&str> for CommonError {
 
 impl From<String> for CommonError {
     fn from(s: String) -> Self {
-        CommonError::Dns(s.to_owned())
+        CommonError::Dns(s)
     }
 }
 

@@ -31,7 +31,7 @@ fn test_new(s_bit: u8, z_bit: u8, scale: u8, multiplier: u32) {
 #[test_case(&[0b10111111, 0b00000000, 0, 0, 100], ErrorEstimate { s_bit: 1, z_bit: 0, scale: 63, multiplier: 100 }; "input2")]
 fn test_try_from_be_bytes(input: &[u8], expected: ErrorEstimate) {
     let error_estimate = ErrorEstimate::try_from_be_bytes(input).unwrap();
-    assert_eq!(error_estimate, expected);
+    assert_eq!(error_estimate.0, expected);
 }
 
 #[test_case(ErrorEstimate { s_bit: 0, z_bit: 1, scale: 0, multiplier: 1 }, vec![0b01000000, 0b00000000, 0, 0, 1]; "input1")]

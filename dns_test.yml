@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: dns-test
+spec:
+  containers:
+    - name: dns-test
+      image: busybox
+      command: ["nslookup", "twamp-reflector"]
+  nodeSelector:
+    kubernetes.io/arch: amd64
+  dnsConfig:
+    searches:
+      - cluster.local

@@ -16,6 +16,7 @@ pub struct TwampConfiguration {
     pub source_ip_address: Option<String>,
     pub collection_period: Option<u64>,
     pub packet_interval: Option<u64>,
+    pub padding: Option<usize>,
 }
 
 pub struct Twamp {
@@ -45,12 +46,8 @@ impl Twamp {
                     .unwrap_or_default(),
                 Duration::from_secs(self.configuration.collection_period.unwrap_or_default()),
                 &hosts,
-                Duration::from_millis(
-                    self.configuration
-                        .packet_interval
-                        .unwrap_or_default()
-                        .into(),
-                ),
+                Duration::from_millis(self.configuration.packet_interval.unwrap_or_default()),
+                self.configuration.padding.unwrap_or_default(),
             ))),
             "LIGHT_REFLECTOR" => Ok(Box::new(Reflector::new(ReflectorConfiguration {
                 mode: self.configuration.mode.clone(),
@@ -58,8 +55,7 @@ impl Twamp {
                     .configuration
                     .clone()
                     .source_ip_address
-                    .unwrap_or_default()
-                    .clone(),
+                    .unwrap_or_default(),
             }))),
             _ => panic!("No such mode"),
         }

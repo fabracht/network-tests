@@ -1,16 +1,14 @@
 use common::{
-    error::CommonError,
     message::{Message, PacketResults},
     time::{DateTime, NtpTimestamp},
 };
 use message_macro::BeBytes;
 
-pub const CONST_PADDING: usize = 27;
+pub const MIN_UNAUTH_PADDING: usize = 27;
 
 /// Unauthenticated TWAMP message as defined
 /// in [RFC4656 Section 4.1.2](https://www.rfc-editor.org/rfc/rfc4656#section-4.1.2)
 #[derive(BeBytes, Debug, PartialEq, Eq, Clone)]
-#[repr(C)]
 pub struct SenderMessage {
     /// Sender sequence number
     pub sequence_number: u32,
@@ -20,24 +18,6 @@ pub struct SenderMessage {
     pub error_estimate: ErrorEstimate,
     /// Payload of the packet to send
     pub padding: Vec<u8>,
-}
-
-impl TryFrom<&[u8]> for SenderMessage {
-    type Error = CommonError;
-
-    fn try_from(buffer: &[u8]) -> Result<Self, Self::Error> {
-        let sequence_number = u32::from_be_bytes(buffer[0..4].try_into()?);
-        let timestamp = NtpTimestamp::try_from_be_bytes(buffer[4..12].try_into()?)?;
-        let error_estimate = ErrorEstimate::try_from_be_bytes(&mut [buffer[12], buffer[13]])?;
-        let mut padding = Vec::new();
-        padding.resize(CONST_PADDING, 0);
-        Ok(Self {
-            sequence_number,
-            timestamp,
-            error_estimate,
-            padding,
-        })
-    }
 }
 
 impl Message for SenderMessage {
@@ -80,40 +60,6 @@ pub struct ReflectedMessage {
     pub sender_ttl: u8,
     /// Payload of the packet to send
     pub padding: Vec<u8>,
-}
-
-impl TryFrom<&[u8]> for ReflectedMessage {
-    type Error = CommonError;
-
-    fn try_from(buffer: &[u8]) -> Result<Self, Self::Error> {
-        if buffer.len() < 41 {
-            return Err(CommonError::NotEnoughBytes(format!("{}", buffer.len())));
-        }
-        let sequence_number = u32::from_be_bytes(buffer[0..4].try_into()?);
-        let timestamp = NtpTimestamp::try_from_be_bytes(buffer[4..12].try_into()?)?;
-        let error_estimate = ErrorEstimate::try_from_be_bytes(&mut [buffer[12], buffer[13]])?;
-        let receive_timestamp = NtpTimestamp::try_from_be_bytes(buffer[16..24].try_into()?)?;
-        let sender_sequence_number = u32::from_be_bytes(buffer[24..28].try_into()?);
-
-        let sender_timestamp = NtpTimestamp::try_from_be_bytes(buffer[28..36].try_into()?)?;
-        let sender_error_estimate =
-            ErrorEstimate::try_from_be_bytes(&mut [buffer[36], buffer[37]])?;
-
-        let sender_ttl = buffer[40];
-        Ok(ReflectedMessage {
-            reflector_sequence_number: sequence_number,
-            timestamp,
-            error_estimate,
-            mbz1: 0,
-            receive_timestamp,
-            sender_sequence_number,
-            sender_timestamp,
-            sender_error_estimate,
-            mbz2: 0,
-            sender_ttl,
-            padding: buffer[41..].to_vec(),
-        })
-    }
 }
 
 impl Message for ReflectedMessage {

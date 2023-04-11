@@ -50,7 +50,7 @@ impl fmt::Display for DateTime {
         let hour = ((self.sec % 86400) / 3600) as u8;
         let min = ((self.sec % 3600) / 60) as u8;
         let sec = (self.sec % 60) as u8;
-        let nanos = self.nanos as u32;
+        let nanos = self.nanos;
         let nanos_str = format!("{:09}", nanos);
 
         f.write_fmt(format_args!(
@@ -123,12 +123,12 @@ impl Add<Duration> for DateTime {
 
     fn add(self, other: Duration) -> DateTime {
         let secs = self.sec + other.as_secs() as u32;
-        let nanos = self.nanos as u32 + other.subsec_nanos();
+        let nanos = self.nanos + other.subsec_nanos();
         let secs_overflow = nanos / 1_000_000_000;
         let nanos = nanos % 1_000_000_000;
         DateTime {
-            sec: (secs + secs_overflow) as u32,
-            nanos: nanos,
+            sec: (secs + secs_overflow),
+            nanos,
         }
     }
 }
@@ -167,7 +167,6 @@ impl Sub<DateTime> for DateTime {
 // In memory representation of an NTP timestamp
 /// See [RFC5905](https://www.rfc-editor.org/rfc/rfc5905)
 #[derive(BeBytes, Debug, PartialEq, Eq, Clone, Copy, Serialize)]
-#[repr(C)]
 pub struct NtpTimestamp {
     /// The number of seconds since the NTP epoch, which is January 1, 1900.
     pub seconds: u32,
@@ -175,37 +174,7 @@ pub struct NtpTimestamp {
     pub fraction: u32,
 }
 
-impl Into<&[u8]> for NtpTimestamp {
-    fn into(self) -> &'static [u8] {
-        todo!()
-    }
-}
-
 impl NtpTimestamp {
-    // pub fn into_bytes(self) -> [u8; 8] {
-    //     let mut bytes = [0; 8];
-
-    //     // Convert seconds to big-endian byte order
-    //     bytes[0..4].copy_from_slice(&self.seconds.to_be_bytes());
-
-    //     // Convert fraction to big-endian byte order
-    //     bytes[4..8].copy_from_slice(&self.fraction.to_be_bytes());
-
-    //     bytes
-    // }
-
-    // pub fn try_from_be_bytes(bytes: &[u8; 8]) -> Result<Self, CommonError> {
-    //     let result = Self {
-    //         seconds: u32::from_be_bytes(bytes[0..4].try_into()?),
-    //         fraction: u32::from_be_bytes(bytes[4..8].try_into()?),
-    //     };
-    //     log::debug!("TFB {:?}", result);
-    //     Ok(Self {
-    //         seconds: u32::from_be_bytes(bytes[0..4].try_into()?),
-    //         fraction: u32::from_be_bytes(bytes[4..8].try_into()?),
-    //     })
-    // }
-
     /// Converts the system timestamp to the NTP timestamp format.
     pub fn ntp_from_timespec(
         sec_since_unix_epoch: u64,
