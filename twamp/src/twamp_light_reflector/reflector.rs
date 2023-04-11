@@ -3,6 +3,7 @@ use common::epoll_loop::LinuxEventLoop as EventLoop;
 
 #[cfg(target_os = "macos")]
 use common::kevent_loop::MacOSEventLoop as EventLoop;
+use message_macro::BeBytes;
 
 use std::{os::fd::IntoRawFd, sync::atomic::Ordering};
 
@@ -19,7 +20,7 @@ use common::{
 };
 
 use crate::{
-    common::{ErrorEstimate, ReflectedMessage, SenderMessage},
+    common::{ErrorEstimate, ReflectedMessage, SenderMessage, MIN_UNAUTH_PADDING},
     twamp_light_sender::result::TwampResult,
 };
 
@@ -68,9 +69,10 @@ impl Strategy<TwampResult, CommonError> for Reflector {
         // Creates the event loop with a default socket
         let mut event_loop = EventLoop::new(1024);
         let _rx_token = event_loop.register_event_source(my_socket, move |inner_socket| {
-            let buffer = &mut [0; 1024];
+            let buffer = &mut [0; 1 << 16];
             let (result, socket_address, timestamp) = inner_socket.receive_from(buffer)?;
-            let twamp_test_message: SenderMessage = buffer[..result].try_into()?;
+            let (twamp_test_message, _bytes_written): (SenderMessage, usize) =
+                SenderMessage::try_from_be_bytes(&buffer[..result])?;
 
             let session_option = sessions
                 .iter()
@@ -89,7 +91,7 @@ impl Strategy<TwampResult, CommonError> for Reflector {
                     sender_error_estimate: twamp_test_message.error_estimate,
                     mbz2: 0,
                     sender_ttl: 255,
-                    padding: Vec::new(),
+                    padding: vec![0_u8; twamp_test_message.padding.len() - MIN_UNAUTH_PADDING],
                 };
                 inner_socket.send_to(&socket_address, reflected_message.clone())?;
                 session.add_to_sent(Box::new(reflected_message));
@@ -110,7 +112,7 @@ impl Strategy<TwampResult, CommonError> for Reflector {
                     sender_ttl: 255,
                     padding: Vec::new(),
                 };
-                log::info!("Refected message: \n {:?}", reflected_message);
+                log::debug!("Refected message: \n {:?}", reflected_message);
                 // Send message
                 inner_socket.send_to(&socket_address, reflected_message.clone())?;
                 // Add message results to session

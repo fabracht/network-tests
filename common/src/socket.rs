@@ -85,11 +85,12 @@ impl<'a> Socket<'a, CustomUdpSocket> for CustomUdpSocket {
         let fd = self.as_raw_fd();
         let mut utc_now: DateTime;
         let bytes = message.to_be_bytes();
+
         let iov = [IoSlice::new(&bytes)];
         let result: isize;
         match address.ip() {
             IpAddr::V4(ipv4) => {
-                log::info!("ipv4 address {}", ipv4.to_string());
+                log::debug!("ipv4 address {}", ipv4.to_string());
                 #[cfg(target_os = "macos")]
                 let mut sockaddr = sockaddr_in {
                     sin_family: libc::AF_INET as u8,
@@ -170,7 +171,7 @@ impl<'a> Socket<'a, CustomUdpSocket> for CustomUdpSocket {
             let res = unsafe { libc::recvmsg(fd, &mut msgh, libc::MSG_ERRQUEUE) };
             if res >= 0 {
                 let mut cmsg = unsafe { libc::CMSG_FIRSTHDR(&msgh) };
-                while cmsg != std::ptr::null_mut() {
+                while !cmsg.is_null() {
                     unsafe {
                         if (*cmsg).cmsg_level == libc::SOL_SOCKET
                             && (*cmsg).cmsg_type == libc::SCM_TIMESTAMPING
@@ -305,7 +306,7 @@ pub fn _print_bytes(data: &[u8]) {
                         print!(".");
                     }
                 }
-                println!("");
+                print!("\n");
             }
             print!("{:08x}: ", i);
         }
@@ -327,7 +328,7 @@ pub fn _print_bytes(data: &[u8]) {
             }
         }
     }
-    println!("");
+    print!("\n");
 }
 
 fn _is_printable(byte: u8) -> bool {
