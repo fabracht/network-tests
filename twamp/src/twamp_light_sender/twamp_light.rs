@@ -15,10 +15,10 @@ use common::{
 use common::kevent_loop::MacOSEventLoop as EventLoop;
 use message_macro::BeBytes;
 
+use crate::common::{ErrorEstimate, ReflectedMessage, SenderMessage, MIN_UNAUTH_PADDING};
+use crate::twamp_light_sender::Configuration as TwampLightConfiguration;
 use core::time::Duration;
 use std::{os::fd::IntoRawFd, rc::Rc, sync::atomic::Ordering};
-
-use crate::common::{ErrorEstimate, ReflectedMessage, SenderMessage, MIN_UNAUTH_PADDING};
 
 use super::result::{NetworkStatistics, SessionResult, TwampResult};
 
@@ -36,19 +36,13 @@ pub struct TwampLight {
 }
 
 impl TwampLight {
-    pub fn new(
-        source_ip_address: &str,
-        duration: Duration,
-        hosts: &[Host],
-        packet_interval: Duration,
-        padding: usize,
-    ) -> Self {
+    pub fn new(configuration: &TwampLightConfiguration) -> Self {
         Self {
-            hosts: hosts.to_owned(),
-            source_ip_address: source_ip_address.to_owned(),
-            duration,
-            packet_interval,
-            padding,
+            hosts: configuration.hosts.to_owned(),
+            source_ip_address: configuration.source_ip_address.to_owned(),
+            duration: Duration::from_secs(configuration.duration),
+            packet_interval: Duration::from_millis(configuration.packet_interval),
+            padding: configuration.padding,
         }
     }
 

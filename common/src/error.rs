@@ -13,6 +13,7 @@ pub enum CommonError {
     Lock,
     Dns(String),
     KeventRegistrationError(std::io::Error), // Added new error variant
+    ValidationError(validator::ValidationErrors),
 }
 
 impl Display for CommonError {
@@ -27,6 +28,9 @@ impl Display for CommonError {
             CommonError::Dns(e) => write!(f, "DNS error: {}", e),
             CommonError::KeventRegistrationError(e) => {
                 write!(f, "Kevent registration error: {}", e)
+            }
+            CommonError::ValidationError(e) => {
+                write!(f, "Failed to validate: {}", e)
             }
         }
     }

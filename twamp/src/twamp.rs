@@ -1,10 +1,12 @@
 use crate::{
     twamp_light_reflector::reflector::Reflector,
     twamp_light_reflector::Configuration as ReflectorConfiguration,
-    twamp_light_sender::{result::TwampResult, twamp_light::TwampLight},
+    twamp_light_sender::{
+        result::TwampResult, twamp_light::TwampLight, Configuration as LightConfiguration,
+    },
 };
-use common::{host::Host, Strategy};
-use core::time::Duration;
+use common::{error::CommonError, host::Host, Strategy};
+
 use serde::{Deserialize, Serialize};
 use validator::Validate;
 
@@ -38,25 +40,39 @@ impl Twamp {
             .flat_map(|host| host.clone())
             .collect::<Vec<Host>>();
         match self.configuration.mode.as_str() {
-            "LIGHT_SENDER" => Ok(Box::new(TwampLight::new(
-                &self
-                    .configuration
-                    .source_ip_address
-                    .clone()
-                    .unwrap_or_default(),
-                Duration::from_secs(self.configuration.collection_period.unwrap_or_default()),
-                &hosts,
-                Duration::from_millis(self.configuration.packet_interval.unwrap_or_default()),
-                self.configuration.padding.unwrap_or_default(),
-            ))),
-            "LIGHT_REFLECTOR" => Ok(Box::new(Reflector::new(ReflectorConfiguration {
-                mode: self.configuration.mode.clone(),
-                source_ip_address: self
-                    .configuration
-                    .clone()
-                    .source_ip_address
-                    .unwrap_or_default(),
-            }))),
+            "LIGHT_SENDER" => {
+                let configuration = LightConfiguration::new(
+                    &hosts,
+                    "LIGHT",
+                    &self
+                        .configuration
+                        .source_ip_address
+                        .clone()
+                        .unwrap_or_default(),
+                    self.configuration.collection_period.unwrap_or_default(),
+                    self.configuration.packet_interval.unwrap_or_default(),
+                    self.configuration.padding.unwrap_or_default(),
+                );
+                configuration
+                    .validate()
+                    .map_err(|e| CommonError::ValidationError(e))?;
+                let twamp_light = TwampLight::new(&configuration);
+                Ok(Box::new(twamp_light))
+            }
+            "LIGHT_REFLECTOR" => {
+                let configuration = ReflectorConfiguration {
+                    mode: self.configuration.mode.clone(),
+                    source_ip_address: self
+                        .configuration
+                        .clone()
+                        .source_ip_address
+                        .unwrap_or_default(),
+                };
+                configuration
+                    .validate()
+                    .map_err(|e| CommonError::ValidationError(e))?;
+                Ok(Box::new(Reflector::new(configuration)))
+            }
             _ => panic!("No such mode"),
         }
     }

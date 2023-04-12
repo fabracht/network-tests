@@ -1,4 +1,5 @@
 use crate::twamp::Twamp;
+use crate::twamp_light_sender::result::TwampResult;
 
 use ::common::error::CommonError;
 use twamp::TwampConfiguration;
@@ -34,7 +35,13 @@ impl App {
         log::info!("{:?}", self.config);
         let twamp = Twamp::new(self.config.clone());
         let mut strategy = twamp.generate()?;
-        let result = strategy.execute()?;
+        let result = match strategy.execute() {
+            Ok(result) => result,
+            Err(e) => TwampResult {
+                session_results: vec![],
+                error: Some(e.to_string()),
+            },
+        };
         // let packet_results = result.session.packets.clone().unwrap();
         log::info!(
             "Result {:#}",
