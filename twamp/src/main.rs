@@ -34,14 +34,20 @@ impl App {
         // your app logic goes here
         log::info!("{:?}", self.config);
         let twamp = Twamp::new(self.config.clone());
-        let mut strategy = twamp.generate()?;
-        let result = match strategy.execute() {
-            Ok(result) => result,
+        let result = match twamp.generate() {
+            Ok(mut strategy) => match strategy.execute() {
+                Ok(result) => result,
+                Err(e) => TwampResult {
+                    session_results: vec![],
+                    error: Some(e.to_string()),
+                },
+            },
             Err(e) => TwampResult {
                 session_results: vec![],
                 error: Some(e.to_string()),
             },
         };
+
         // let packet_results = result.session.packets.clone().unwrap();
         log::info!(
             "Result {:#}",
