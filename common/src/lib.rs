@@ -71,7 +71,7 @@ macro_rules! libc_call {
         let result = libc::$name($($arg_name),*) ;
         if result == -1 {
             let err = std::io::Error::last_os_error();
-            let err_msg = std::ffi::CStr::from_ptr(libc::strerror(err.raw_os_error().unwrap()));
+            let err_msg = std::ffi::CStr::from_ptr(libc::strerror(err.raw_os_error().ok_or("Error retrieving os error")?));
             return Err(std::io::Error::new(err.kind(), err_msg.to_string_lossy().into_owned()).into());
         }
         std::result::Result::Ok(result)

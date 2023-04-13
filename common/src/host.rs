@@ -1,9 +1,10 @@
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
+use validator::Validate;
 
 use crate::error::CommonError;
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, Default)]
+#[derive(Validate, Serialize, Deserialize, Debug, PartialEq, Eq, Clone, Default)]
 pub struct Host {
     pub ip: String,
     pub port: u16,

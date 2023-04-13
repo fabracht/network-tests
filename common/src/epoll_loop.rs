@@ -1,9 +1,8 @@
+use mio::{unix::SourceFd, Events, Interest};
 use std::{
     collections::HashMap,
     os::fd::{AsRawFd, RawFd},
 };
-
-use mio::{unix::SourceFd, Events, Interest, Poll};
 
 use crate::{
     error::CommonError,
@@ -20,7 +19,7 @@ pub type TimedSources<T> = (
 );
 
 pub struct LinuxEventLoop<T: AsRawFd + for<'a> Socket<'a, T>> {
-    poll: Poll,
+    poll: mio::Poll,
     events: Events,
     pub sources: HashMap<Token, Sources<T>>,
     timed_sources: HashMap<Token, TimedSources<T>>,
@@ -29,7 +28,7 @@ pub struct LinuxEventLoop<T: AsRawFd + for<'a> Socket<'a, T>> {
 impl<T: AsRawFd + for<'a> Socket<'a, T>> EventLoopTrait<T> for LinuxEventLoop<T> {
     fn new(event_capacity: usize) -> Self {
         // Create the poll
-        let poll = Poll::new().unwrap();
+        let poll = mio::Poll::new().unwrap();
 
         let events = Events::with_capacity(event_capacity);
 

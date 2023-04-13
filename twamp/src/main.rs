@@ -9,14 +9,18 @@ mod twamp;
 mod twamp_light_reflector;
 mod twamp_light_sender;
 
+use clap::Parser;
 use std::fs::File;
 use std::io::Read;
-use structopt::StructOpt;
 
-#[derive(StructOpt)]
-#[structopt(name = "myapp")]
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
 struct Cli {
-    #[structopt(short = "c", long = "config", default_value = "config.json")]
+    #[arg(
+        short,
+        long,
+        default_value_t = String::from("twamp/configurations/receiver_config.json")
+    )]
     config_file: String,
 }
 
@@ -31,7 +35,6 @@ impl App {
     }
 
     fn run(&self) -> Result<(), CommonError> {
-        // your app logic goes here
         log::info!("{:?}", self.config);
         let twamp = Twamp::new(self.config.clone());
         let result = match twamp.generate() {
@@ -48,21 +51,19 @@ impl App {
             },
         };
 
-        // let packet_results = result.session.packets.clone().unwrap();
         log::info!(
             "Result {:#}",
             serde_json::to_string_pretty(&result).unwrap()
         );
-        // _calculate_offsets(&packet_results);
 
         Ok(())
     }
 }
 
 fn main() {
-    log4rs::init_file("twamp/log_config.yml", Default::default()).unwrap();
+    let _ = log4rs::init_file("twamp/log_config.yml", Default::default());
 
-    let args = Cli::from_args();
+    let args = Cli::parse();
 
     let mut file = File::open(args.config_file).expect("failed to open config file");
     let mut contents = String::new();

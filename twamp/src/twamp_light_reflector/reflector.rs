@@ -37,9 +37,7 @@ impl Reflector {
     }
 
     fn create_socket(&mut self) -> Result<CustomUdpSocket, CommonError> {
-        let socket =
-            mio::net::UdpSocket::bind(self.configuration.source_ip_address.parse().unwrap())
-                .unwrap();
+        let socket = mio::net::UdpSocket::bind(self.configuration.source_ip_address.parse()?)?;
         let mut my_socket = CustomUdpSocket::new(socket.into_raw_fd());
         #[cfg(target_os = "linux")]
         my_socket.set_socket_options(libc::SOCK_NONBLOCK | libc::SOCK_CLOEXEC, None)?;
