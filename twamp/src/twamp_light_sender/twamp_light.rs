@@ -5,7 +5,7 @@ use common::{
     event_loop::{EventLoopTrait, Itimerspec, Token},
     host::Host,
     session::Session,
-    socket::{set_timestamping_options, CustomUdpSocket, Socket},
+    socket::{set_timestamping_options, Socket, TimestampedUdpSocket},
     statistics::OrderStatisticsTree,
     time::{DateTime, NtpTimestamp},
     Strategy,
@@ -46,9 +46,9 @@ impl TwampLight {
         }
     }
 
-    fn create_socket(&mut self) -> Result<CustomUdpSocket, crate::CommonError> {
+    fn create_socket(&mut self) -> Result<TimestampedUdpSocket, crate::CommonError> {
         let socket = mio::net::UdpSocket::bind(self.source_ip_address.parse().unwrap()).unwrap();
-        let mut my_socket = CustomUdpSocket::new(socket.into_raw_fd());
+        let mut my_socket = TimestampedUdpSocket::new(socket.into_raw_fd());
 
         #[cfg(target_os = "linux")]
         my_socket.set_socket_options(libc::SOCK_NONBLOCK | libc::SOCK_CLOEXEC, None)?;
@@ -198,7 +198,7 @@ fn calculate_session_results(rc_sessions: Rc<Vec<Session>>) -> Vec<SessionResult
 }
 
 fn create_tx_callback(
-    event_loop: &mut EventLoop<CustomUdpSocket>,
+    event_loop: &mut EventLoop<TimestampedUdpSocket>,
     timer_spec: Itimerspec,
     rx_token: Token,
     tx_sessions: Rc<Vec<Session>>,
@@ -244,8 +244,8 @@ fn create_tx_callback(
 }
 
 fn create_rx_callback(
-    event_loop: &mut EventLoop<CustomUdpSocket>,
-    my_socket: CustomUdpSocket,
+    event_loop: &mut EventLoop<TimestampedUdpSocket>,
+    my_socket: TimestampedUdpSocket,
     rx_sessions: Rc<Vec<Session>>,
 ) -> Result<Token, CommonError> {
     let rx_token = event_loop.register_event_source(my_socket, move |inner_socket| {

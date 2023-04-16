@@ -6,6 +6,7 @@ use twamp::TwampConfiguration;
 use validator::Validate;
 mod common;
 mod twamp;
+mod twamp_control;
 mod twamp_light_reflector;
 mod twamp_light_sender;
 
