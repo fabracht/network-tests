@@ -12,7 +12,7 @@ use crate::time::DateTime;
 use super::error::CommonError;
 
 pub trait Socket<'a, T: AsRawFd> {
-    fn send(&self, messages: msghdr) -> Result<(usize, DateTime), CommonError>;
+    fn send(&self, message: impl BeBytes) -> Result<(usize, DateTime), CommonError>;
     fn send_to(
         &self,
         address: &SocketAddr,
@@ -23,29 +23,29 @@ pub trait Socket<'a, T: AsRawFd> {
         -> Result<(usize, SocketAddr, DateTime), CommonError>;
 }
 
-pub struct CustomUdpSocket {
+pub struct TimestampedUdpSocket {
     inner: RawFd,
 }
 
-impl Drop for CustomUdpSocket {
+impl Drop for TimestampedUdpSocket {
     fn drop(&mut self) {
         unsafe { libc::close(self.inner) };
     }
 }
 
-impl AsRawFd for CustomUdpSocket {
+impl AsRawFd for TimestampedUdpSocket {
     fn as_raw_fd(&self) -> RawFd {
         self.inner
     }
 }
 
-impl From<&mut i32> for CustomUdpSocket {
+impl From<&mut i32> for TimestampedUdpSocket {
     fn from(value: &mut i32) -> Self {
         Self::new(value.as_raw_fd())
     }
 }
 
-impl Deref for CustomUdpSocket {
+impl Deref for TimestampedUdpSocket {
     type Target = RawFd;
 
     fn deref(&self) -> &Self::Target {
@@ -53,7 +53,7 @@ impl Deref for CustomUdpSocket {
     }
 }
 
-impl CustomUdpSocket {
+impl TimestampedUdpSocket {
     pub fn new(socket: RawFd) -> Self {
         Self { inner: socket }
     }
@@ -72,8 +72,8 @@ impl CustomUdpSocket {
     }
 }
 
-impl<'a> Socket<'a, CustomUdpSocket> for CustomUdpSocket {
-    fn send(&self, _buffer: msghdr) -> Result<(usize, DateTime), CommonError> {
+impl<'a> Socket<'a, TimestampedUdpSocket> for TimestampedUdpSocket {
+    fn send(&self, _buffer: impl BeBytes) -> Result<(usize, DateTime), CommonError> {
         todo!()
     }
 
@@ -344,13 +344,13 @@ pub struct ScmTimestamping {
 }
 
 #[cfg(target_os = "macos")]
-pub fn set_timestamping_options(socket: &mut CustomUdpSocket) -> Result<(), CommonError> {
+pub fn set_timestamping_options(socket: &mut TimestampedUdpSocket) -> Result<(), CommonError> {
     let value = 1; // Enable the SO_TIMESTAMP option
     socket.set_socket_options(libc::SO_TIMESTAMP, Some(value))
 }
 
 #[cfg(target_os = "linux")]
-pub fn set_timestamping_options(socket: &mut CustomUdpSocket) -> Result<(), CommonError> {
+pub fn set_timestamping_options(socket: &mut TimestampedUdpSocket) -> Result<(), CommonError> {
     let value = libc::SOF_TIMESTAMPING_SOFTWARE
         | libc::SOF_TIMESTAMPING_RX_SOFTWARE
         | libc::SOF_TIMESTAMPING_TX_SOFTWARE;

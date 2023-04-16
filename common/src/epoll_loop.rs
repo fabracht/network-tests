@@ -1,8 +1,9 @@
-use mio::{unix::SourceFd, Events, Interest};
 use std::{
     collections::HashMap,
     os::fd::{AsRawFd, RawFd},
 };
+
+use mio::{unix::SourceFd, Events, Interest, Poll};
 
 use crate::{
     error::CommonError,
@@ -19,7 +20,7 @@ pub type TimedSources<T> = (
 );
 
 pub struct LinuxEventLoop<T: AsRawFd + for<'a> Socket<'a, T>> {
-    poll: mio::Poll,
+    poll: Poll,
     events: Events,
     pub sources: HashMap<Token, Sources<T>>,
     timed_sources: HashMap<Token, TimedSources<T>>,
@@ -28,7 +29,7 @@ pub struct LinuxEventLoop<T: AsRawFd + for<'a> Socket<'a, T>> {
 impl<T: AsRawFd + for<'a> Socket<'a, T>> EventLoopTrait<T> for LinuxEventLoop<T> {
     fn new(event_capacity: usize) -> Self {
         // Create the poll
-        let poll = mio::Poll::new().unwrap();
+        let poll = Poll::new().unwrap();
 
         let events = Events::with_capacity(event_capacity);
 
@@ -140,13 +141,6 @@ impl<T: AsRawFd + for<'a> Socket<'a, T>> EventLoopTrait<T> for LinuxEventLoop<T>
         let mut timer_source = SourceFd(&timer_fd);
         let new_token = self.generate_token();
         let mio_token = mio::Token(new_token.0);
-
-        log::debug!(
-            "Added duration {:?} with token mio {:?}  self {:?}",
-            time_spec,
-            mio_token,
-            new_token
-        );
         self.poll
             .registry()
             .register(&mut timer_source, mio_token, Interest::READABLE)?;
