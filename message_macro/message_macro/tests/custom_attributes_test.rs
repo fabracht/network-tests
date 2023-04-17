@@ -42,7 +42,7 @@ fn test_to_be_bytes(input: ErrorEstimate, expected: Vec<u8>) {
 }
 
 #[test]
-#[should_panic(expected = "value: ValueOutOfRange { field_name: \"scale\", max_value: 63 }")]
+#[should_panic(expected = "Value of field scale is out of range")]
 fn test_value_out_of_range() {
     let _ = ErrorEstimate::new(0, 1, 64, 1).unwrap();
 }

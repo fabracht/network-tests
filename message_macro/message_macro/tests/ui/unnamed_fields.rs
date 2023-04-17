@@ -1,6 +1,6 @@
-use message_macro::CustomAttributes;
+use message_macro::BeBytes;
 
-#[derive(CustomAttributes)]
+#[derive(BeBytes)]
 enum UnsupportedEnum {
     A,
     B,
