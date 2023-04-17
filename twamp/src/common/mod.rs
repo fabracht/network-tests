@@ -87,3 +87,67 @@ pub struct ErrorEstimate {
     pub scale: u8,
     pub multiplier: u8,
 }
+
+// Define the TWAMP Server Greeting message struct
+#[derive(BeBytes, Debug, Default)]
+pub struct TwampServerGreeting {
+    pub unused: [u8; 12],    // 12 unused octets (zeroes)
+    pub modes: u32,          // Supported modes bitmask
+    pub challenge: [u8; 16], // Server's challenge
+    pub salt: [u8; 16],      // Server's salt
+    pub count: u32,          // Server's iteration count
+    pub mbz: [u8; 12],       // Must be zero (MBZ) octets
+}
+
+// Define the TWAMP Control Message Types
+#[derive(Debug, PartialEq)]
+enum ControlMessageType {
+    SetupResponse = 1,
+    ServerStart = 2,
+    SetupRequest = 3,
+    ClientStart = 4,
+    StopRequest = 5,
+    StopAccept = 6,
+    // ... add other control message types as needed
+}
+
+// Define the TWAMP Setup Request message struct
+#[derive(Debug)]
+struct SetupRequest {
+    msg_type: ControlMessageType,
+    mode: u32,
+    key: [u8; 80],
+    // ... add other fields as needed
+}
+
+// Define the TWAMP Client Start message struct
+#[derive(Debug)]
+struct ClientStart {
+    msg_type: ControlMessageType,
+    time: NtpTimestamp,
+    timeout: u32,
+    type_p: u8,
+    // ... add other fields as needed
+}
+
+// Define the TWAMP Server Start message struct
+#[derive(Debug)]
+struct ServerStart {
+    msg_type: ControlMessageType,
+    time: NtpTimestamp,
+    // ... add other fields as needed
+}
+
+// Define the TWAMP Stop Request message struct
+#[derive(Debug)]
+struct StopRequest {
+    msg_type: ControlMessageType,
+    accept: u8,
+}
+
+// Define the TWAMP Stop Accept message struct
+#[derive(Debug)]
+struct StopAccept {
+    msg_type: ControlMessageType,
+    accept: u8,
+}

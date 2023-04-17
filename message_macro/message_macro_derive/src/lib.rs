@@ -220,7 +220,6 @@ pub fn derive_be_bytes(input: TokenStream) -> TokenStream {
                                             field_parsing.push(quote! {
                                                 byte_index = bit_sum / 8;
                                                 // println!("{} by te_index: {} bit_sum: {}", stringify!(#field_name), byte_index, bit_sum);
-                                                // let #field_name = Vec::from(&bytes[byte_index..]);
                                                 let mut #field_name = [0u8; #array_length];
                                                 #field_name.copy_from_slice(&bytes[byte_index..#array_length]);
                                                 bit_sum += 8 * #array_length;
@@ -470,6 +469,12 @@ pub fn derive_be_bytes(input: TokenStream) -> TokenStream {
                 output.into()
             }
         },
+        Data::Enum(data_enum) => {
+            eprintln!("data_enum {:#?}", data_enum);
+            let output = quote! {};
+
+            output.into()
+        }
         _ => {
             let error =
                 syn::Error::new(Span::call_site(), "Only Structs are supported").to_compile_error();

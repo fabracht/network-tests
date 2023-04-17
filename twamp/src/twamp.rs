@@ -73,6 +73,8 @@ impl Twamp {
                     .map_err(|e| CommonError::ValidationError(e))?;
                 Ok(Box::new(Reflector::new(configuration)))
             }
+            "FULL_SENDER" => unimplemented!(),
+            "FULL_REFLECTOR" => unimplemented!(),
             _ => panic!("No such mode"),
         }
     }
