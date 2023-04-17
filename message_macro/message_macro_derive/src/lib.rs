@@ -9,7 +9,7 @@ use syn::{
 #[proc_macro_derive(BeBytes, attributes(U8))]
 pub fn derive_be_bytes(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
-    let name = input.ident;
+    let name = input.ident.clone();
     let my_trait_path: syn::Path = syn::parse_str("BeBytes").unwrap();
 
     match input.data {
@@ -178,6 +178,69 @@ pub fn derive_be_bytes(input: TokenStream) -> TokenStream {
                                     &mut field_writing,
                                 );
                             }
+                            // if field is an Array
+                            syn::Type::Array(tp) => {
+                                eprintln!("tp {:#?}", tp);
+                                let array_length: usize;
+                                let len = tp.len.clone();
+                                match len {
+                                    syn::Expr::Lit(expr_lit) => {
+                                        if let syn::Lit::Int(token) = expr_lit.lit {
+                                            array_length = token.base10_parse().unwrap();
+                                        } else {
+                                            let error = syn::Error::new(
+                                                field.ty.span(),
+                                                "Expected integer type for N",
+                                            );
+                                            errors.push(error.to_compile_error());
+                                            continue;
+                                        }
+                                    }
+                                    _ => {
+                                        let error = syn::Error::new(
+                                            tp.span(),
+                                            "Unsupported type for [T; N]",
+                                        );
+                                        errors.push(error.to_compile_error());
+                                        continue;
+                                    }
+                                }
+                                if let syn::Type::Path(elem) = *tp.elem.clone() {
+                                    // Retrieve type segments
+                                    let syn::TypePath {
+                                        path: syn::Path { segments, .. },
+                                        ..
+                                    } = elem;
+
+                                    match &segments[0] {
+                                        syn::PathSegment {
+                                            ident,
+                                            arguments: syn::PathArguments::None,
+                                        } if ident == "u8" => {
+                                            field_parsing.push(quote! {
+                                                byte_index = bit_sum / 8;
+                                                // println!("{} by te_index: {} bit_sum: {}", stringify!(#field_name), byte_index, bit_sum);
+                                                // let #field_name = Vec::from(&bytes[byte_index..]);
+                                                let mut #field_name = [0u8; #array_length];
+                                                #field_name.copy_from_slice(&bytes[byte_index..#array_length]);
+                                                bit_sum += 8 * #array_length;
+                                            });
+                                            field_writing.push(quote! {
+                                                // Vec type
+                                                bytes.extend_from_slice(&#field_name);
+                                            });
+                                        }
+                                        _ => {
+                                            let error = syn::Error::new(
+                                                field.ty.span(),
+                                                "Unsupported type for [T; N]",
+                                            );
+                                            errors.push(error.to_compile_error());
+                                            continue;
+                                        }
+                                    };
+                                }
+                            }
                             // if field is a non-empty Vec
                             syn::Type::Path(tp)
                                 if tp.path.segments.len() > 0
@@ -316,6 +379,7 @@ pub fn derive_be_bytes(input: TokenStream) -> TokenStream {
                                 if tp.path.segments.len() > 0
                                     && !is_primitive_type(&tp.path.segments[0].ident) =>
                             {
+                                // Struct case
                                 field_parsing.push(quote_spanned! { field.span() =>
                                     byte_index = bit_sum / 8;
                                     let predicted_size = core::mem::size_of::<#field_type>();
