@@ -48,7 +48,7 @@ impl ControlSession {
 
     // Method to transition to the next state of the state machine
     fn transition(&mut self) {
-        match &self.state {
+        match &mut self.state {
             ControlSessionState::Initial(tcp_stream) => {
                 // Start the control connection
                 // If successful, transition to the authentication state
