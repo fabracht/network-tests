@@ -19,7 +19,7 @@ pub struct TwampConfiguration {
     pub collection_period: Option<u64>,
     pub packet_interval: Option<u64>,
     pub padding: Option<usize>,
-    pub ref_wait: u64,
+    pub ref_wait: Option<u64>,
 }
 
 pub struct Twamp {
@@ -68,7 +68,7 @@ impl Twamp {
                         .clone()
                         .source_ip_address
                         .unwrap_or_default(),
-                    ref_wait: self.configuration.ref_wait,
+                    ref_wait: self.configuration.ref_wait.unwrap_or(900),
                 };
                 configuration
                     .validate()

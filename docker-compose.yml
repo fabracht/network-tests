@@ -8,5 +8,3 @@ services:
       dockerfile: Dockerfile
     ports:
       - "44571:44571/udp"
-    volumes:
-      - ./twamp/configuration:/app/twamp/configuration

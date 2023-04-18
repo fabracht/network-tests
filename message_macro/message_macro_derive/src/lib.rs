@@ -177,7 +177,7 @@ pub fn derive_be_bytes(input: TokenStream) -> TokenStream {
                             }
                             // if field is an Array
                             syn::Type::Array(tp) => {
-                                eprintln!("tp {:#?}", tp);
+                                // get the size of the array
                                 let array_length: usize;
                                 let len = tp.len.clone();
                                 match len {
