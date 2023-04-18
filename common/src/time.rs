@@ -5,6 +5,7 @@ use core::time::Duration;
 use libc::{clock_gettime, gmtime, localtime, time, time_t, timespec, tm, CLOCK_REALTIME};
 use message_macro::BeBytes;
 use serde::{Deserialize, Serialize, Serializer};
+use std::time::SystemTime;
 
 /// Seconds between Jan 1, 1900 and Jan 1, 1970
 pub const NTP_EPOCH: i64 = 2_208_988_800;
@@ -175,6 +176,27 @@ pub struct NtpTimestamp {
 }
 
 impl NtpTimestamp {
+    /// Returns the current NTP timestamp.
+    pub fn now() -> Self {
+        // The difference between the UNIX epoch (January 1, 1970) and the NTP epoch (January 1, 1900) in seconds.
+        const EPOCH_DIFFERENCE: u64 = 2_208_988_800;
+
+        // Get the current time since the UNIX epoch.
+        let unix_duration = SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("Current time is earlier than UNIX epoch");
+
+        // Convert the time to NTP format.
+        let ntp_seconds = (unix_duration.as_secs() + EPOCH_DIFFERENCE) as u32;
+        let ntp_fraction =
+            (unix_duration.subsec_nanos() as f64 / 1_000_000_000.0 * (1u64 << 32) as f64) as u32;
+
+        NtpTimestamp {
+            seconds: ntp_seconds,
+            fraction: ntp_fraction,
+        }
+    }
+
     /// Converts the system timestamp to the NTP timestamp format.
     pub fn ntp_from_timespec(
         sec_since_unix_epoch: u64,

@@ -12,20 +12,17 @@ pub fn derive_be_bytes(input: TokenStream) -> TokenStream {
     let name = input.ident.clone();
     let my_trait_path: syn::Path = syn::parse_str("BeBytes").unwrap();
 
+    let mut errors = Vec::new();
+    let mut field_parsing = Vec::new();
+    let mut field_writing = Vec::new();
+    // initialize the bit sum to 0
     match input.data {
         Data::Struct(data) => match data.fields {
             Fields::Named(fields) => {
-                let mut errors = Vec::new();
-                let mut field_limit_check = Vec::new();
-                let mut field_parsing = Vec::new();
-                let mut field_writing = Vec::new();
-                // initialize the bit sum to 0
-                let mut u8_bit_sum = 0;
-                let mut non_bit_fields = 0;
                 let mut total_size = 0;
-                // initialize the last position to None
-                // let mut last_pos = None;
-                // get the last field
+                let mut non_bit_fields = 0;
+                let mut u8_bit_sum = 0;
+                let mut field_limit_check = Vec::new();
                 let last_field = fields.named.last();
                 let mut is_last_field = false;
 
@@ -470,10 +467,71 @@ pub fn derive_be_bytes(input: TokenStream) -> TokenStream {
             }
         },
         Data::Enum(data_enum) => {
-            eprintln!("data_enum {:#?}", data_enum);
-            let output = quote! {};
+            // eprintln!("data_enum {:#?}", data_enum);
+            let variants = data_enum.variants;
 
-            output.into()
+            let values = variants
+                .iter()
+                .enumerate()
+                .map(|(index, variant)| {
+                    let ident = &variant.ident;
+                    let mut assigned_value = index as u8;
+                    match &variant.discriminant {
+                        Some((_, expr)) => match expr {
+                            syn::Expr::Lit(expr_lit) => {
+                                if let syn::Lit::Int(token) = &expr_lit.lit {
+                                    assigned_value = token.base10_parse().unwrap();
+                                }
+                            }
+                            _ => (),
+                        },
+                        None => (),
+                    };
+                    (ident, assigned_value)
+                })
+                .collect::<Vec<_>>();
+
+            let from_be_bytes_arms = values.iter().map(|(ident, assigned_value)| {
+                quote! {
+                    #assigned_value => Ok((Self::#ident, 1)),
+                }
+            });
+
+            let to_be_bytes_arms = values.iter().map(|(ident, assigned_value)| {
+                quote! {
+                    Self::#ident => #assigned_value as u8,
+                }
+            });
+
+            let expanded = quote! {
+                impl #my_trait_path for #name {
+                    fn try_from_be_bytes(bytes: &[u8]) -> Result<(Self, usize), Box<dyn std::error::Error>> {
+                        if bytes.is_empty() {
+                            return Err(Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, "No bytes provided.")));
+                        }
+
+                        let value = bytes[0];
+                        match value {
+                            #(#from_be_bytes_arms)*
+                            _ => Err(Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, "No matching variant found."))),
+                        }
+                    }
+
+                    fn to_be_bytes(&self) -> Vec<u8> {
+                        let mut bytes = Vec::new();
+                        let val = match self {
+                            #(#to_be_bytes_arms)*
+                        };
+                        bytes.push(val);
+                        bytes
+                    }
+
+                    fn field_size(&self) -> usize {
+                        std::mem::size_of_val(self)
+                    }
+                }
+            };
+            expanded.into()
         }
         _ => {
             let error =

@@ -8,4 +8,5 @@ pub struct Configuration {
     #[validate(contains = "LIGHT")]
     pub mode: String,
     pub source_ip_address: String,
+    pub ref_wait: u64,
 }

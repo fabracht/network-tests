@@ -17,23 +17,35 @@ fn main() {
     // }
     // let error = ErrorEstimate::try_from_be_bytes(&bytes);
     // println!("\nError: {:?}", error);
-    let dummy = DummyStruct {
-        dummy0: [0, 2],
-        dummy1: 1,
-        dummy2: 2,
-    };
-    let dummy_bytes = dummy.to_be_bytes();
+    // let dummy = DummyStruct {
+    //     dummy0: [0, 2],
+    //     dummy1: 1,
+    //     dummy2: 2,
+    // };
+    // let dummy_bytes = dummy.to_be_bytes();
 
-    let dummy_error = DummyStruct::try_from_be_bytes(&dummy_bytes);
-    println!("\ndummy error {:?}", dummy_error);
+    // let dummy_error = DummyStruct::try_from_be_bytes(&dummy_bytes);
+    // println!("\ndummy error {:?}", dummy_error);
+    let dummy_enum = DummyEnum::ServerStart;
+    let dummy_enum_bytes = dummy_enum.to_be_bytes();
+    println!("{:?}", dummy_enum_bytes);
+    let re_dummy_enum = DummyEnum::try_from_be_bytes(&dummy_enum_bytes);
+    println!("{:?}", re_dummy_enum);
 }
 
-#[derive(BeBytes, Debug, PartialEq, Clone)]
-pub struct DummyStruct {
-    pub dummy0: [u8; 2],
-    pub dummy1: u32,
-    pub dummy2: u32,
+#[derive(BeBytes, Debug, PartialEq)]
+pub enum DummyEnum {
+    SetupResponse = 1,
+    ServerStart = 2,
+    SetupRequest = 3,
 }
+
+// #[derive(BeBytes, Debug, PartialEq, Clone)]
+// pub struct DummyStruct {
+//     pub dummy0: [u8; 2],
+//     pub dummy1: u32,
+//     pub dummy2: u32,
+// }
 
 // #[derive(BeBytes, Debug, PartialEq)]
 // pub struct ErrorEstimate {

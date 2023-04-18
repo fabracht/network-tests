@@ -1,6 +1,9 @@
-use common::{socket::Socket, tcp_socket::TimestampedTcpSocket};
+use common::{socket::Socket, tcp_socket::TimestampedTcpSocket, time::NtpTimestamp};
 
-use crate::{common::TwampServerGreeting, twamp_light_sender::twamp_light::TwampLight};
+use crate::{
+    common::{ControlMessageType, ServerGreeting, ServerStart},
+    twamp_light_sender::twamp_light::TwampLight,
+};
 
 // Define the states of the state machine as an enum
 enum ControlSessionState {
@@ -47,53 +50,60 @@ impl ControlSession {
     }
 
     // Method to transition to the next state of the state machine
-    fn transition(&mut self) {
-        match &mut self.state {
+    fn transition(mut self) {
+        match self.state {
             ControlSessionState::Initial(socket) => {
                 // Start the control connection
-                let server_greeting = TwampServerGreeting::default();
-                socket.send(server_greeting);
-                // If successful, transition to the authentication state
-                // If failed, transition to the error state or retry state
+                let server_greeting = ServerGreeting::default();
+                let result = socket.send(server_greeting);
+                match result {
+                    // If successful, transition to the authentication state
+                    Ok((result, _)) => self.state = ControlSessionState::Authentication(socket),
+                    // If failed, transition to the error state or retry state
+                    Err(_e) => self.state = ControlSessionState::Error(socket),
+                }
             }
-            ControlSessionState::Authentication(tcp_stream) => {
+            ControlSessionState::Authentication(socket) => {
                 // Authenticate the control connection
                 // If successful, transition to the negotiation state
                 // If failed, transition to the error state or retry state
                 // Set a timeout for the authentication process
+                self.state = ControlSessionState::Negotiation(socket);
             }
-            ControlSessionState::Negotiation(tcp_stream) => {
+            ControlSessionState::Negotiation(socket) => {
+                let message =
+                    ServerStart::new(ControlMessageType::ServerStart, NtpTimestamp::now());
                 // Negotiate session parameters
                 // If successful, transition to the start state
                 // If failed, transition to the retry state
                 // Set a timeout for the negotiation process
             }
-            ControlSessionState::Start(tcp_stream) => {
+            ControlSessionState::Start(socket) => {
                 // Send the TWAMP-Test packet to start each test session
                 // If successful, transition to the monitor state
                 // If failed, transition to the retry state
                 // Set a timeout for the TWAMP-Test packet transmission
             }
-            ControlSessionState::Monitor(tcp_stream) => {
+            ControlSessionState::Monitor(socket) => {
                 // Monitor each test session
                 // If all test sessions complete successfully, transition to the end state
                 // If any test session fails, transition to the error state or retry state
                 // depending on the retry and error counts
                 // Set a timeout for the TW
             }
-            ControlSessionState::End(tcp_stream) => {
+            ControlSessionState::End(socket) => {
                 // Send the TWAMP-Stop packet to end each test session
                 // If successful, transition to the error state
                 // If failed, transition to the error state or retry state
                 // depending on the retry and error counts
             }
-            ControlSessionState::Retry(tcp_stream) => {
+            ControlSessionState::Retry(socket) => {
                 // Retry the failed step
                 // If successful, transition back to the previous state
                 // If failed, transition to the error state or retry state
                 // depending on the retry and error counts
             }
-            ControlSessionState::Error(tcp_stream) => {
+            ControlSessionState::Error(socket) => {
                 // Handle the error
                 // If recoverable, transition back to the previous state
                 // If not recoverable, terminate the control connection and stop all test sessions
