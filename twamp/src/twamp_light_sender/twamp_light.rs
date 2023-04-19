@@ -1,5 +1,6 @@
 #[cfg(target_os = "linux")]
 use common::epoll_loop::LinuxEventLoop as EventLoop;
+
 use common::{
     error::CommonError,
     event_loop::{EventLoopTrait, Itimerspec, Token},

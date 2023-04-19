@@ -1,8 +1,11 @@
-use common::{socket::Socket, tcp_socket::TimestampedTcpSocket, time::NtpTimestamp};
+use common::{
+    error::CommonError, socket::Socket, tcp_socket::TimestampedTcpSocket, time::NtpTimestamp,
+    Strategy,
+};
 
 use crate::{
     common::{ControlMessageType, ServerGreeting, ServerStart},
-    twamp_light_sender::twamp_light::TwampLight,
+    twamp_light_sender::{result::TwampResult, twamp_light::TwampLight},
 };
 
 // Define the states of the state machine as an enum
@@ -109,5 +112,11 @@ impl ControlSession {
                 // If not recoverable, terminate the control connection and stop all test sessions
             }
         }
+    }
+}
+
+impl Strategy<TwampResult, CommonError> for ControlSession {
+    fn execute(&mut self) -> std::result::Result<TwampResult, CommonError> {
+        todo!()
     }
 }
