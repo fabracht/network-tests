@@ -535,7 +535,7 @@ pub fn derive_be_bytes(input: TokenStream) -> TokenStream {
         }
         _ => {
             let error =
-                syn::Error::new(Span::call_site(), "Only Structs are supported").to_compile_error();
+                syn::Error::new(Span::call_site(), "Type is not supported").to_compile_error();
             let output = quote! {
                 #error
             };

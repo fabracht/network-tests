@@ -1,7 +1,0 @@
-error: Only Structs are supported
- --> tests/ui/unnamed_fields.rs:3:10
-  |
-3 | #[derive(BeBytes)]
-  |          ^^^^^^^
-  |
-  = note: this error originates in the derive macro `BeBytes` (in Nightly builds, run with -Z macro-backtrace for more info)
