@@ -1,4 +1,5 @@
 use crate::{
+    twamp_control::{control::Control, Configuration as FullReflectorConfiguration},
     twamp_light_reflector::reflector::Reflector,
     twamp_light_reflector::Configuration as ReflectorConfiguration,
     twamp_light_sender::{
@@ -76,7 +77,21 @@ impl Twamp {
                 Ok(Box::new(Reflector::new(configuration)))
             }
             "FULL_SENDER" => unimplemented!(),
-            "FULL_REFLECTOR" => unimplemented!(),
+            "FULL_REFLECTOR" => {
+                let configuration = FullReflectorConfiguration {
+                    mode: self.configuration.mode.clone(),
+                    source_ip_address: self
+                        .configuration
+                        .clone()
+                        .source_ip_address
+                        .unwrap_or_default(),
+                    ref_wait: self.configuration.ref_wait.unwrap_or(900),
+                };
+                configuration
+                    .validate()
+                    .map_err(|e| CommonError::ValidationError(e))?;
+                Ok(Box::new(Control::new(configuration)))
+            }
             _ => panic!("No such mode"),
         }
     }

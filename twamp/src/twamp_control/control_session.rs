@@ -21,7 +21,7 @@ enum ControlSessionState {
 }
 
 // Define a struct to represent the TWAMP control session
-struct ControlSession {
+pub struct ControlSession {
     state: ControlSessionState,
     twamp_sessions: Vec<TwampLight>,
     retry_count: u32, // Number of times to retry failed steps
@@ -34,7 +34,11 @@ struct ControlSession {
 
 impl ControlSession {
     // Method to create a new TWAMP control session with the initial state and TCP connection
-    fn new(tcp_stream: TimestampedTcpSocket, retry_count: u32, error_count: u32) -> ControlSession {
+    pub fn new(
+        tcp_stream: TimestampedTcpSocket,
+        retry_count: u32,
+        error_count: u32,
+    ) -> ControlSession {
         ControlSession {
             state: ControlSessionState::Initial(tcp_stream),
             twamp_sessions: Vec::new(),
@@ -112,11 +116,5 @@ impl ControlSession {
                 // If not recoverable, terminate the control connection and stop all test sessions
             }
         }
-    }
-}
-
-impl Strategy<TwampResult, CommonError> for ControlSession {
-    fn execute(&mut self) -> std::result::Result<TwampResult, CommonError> {
-        todo!()
     }
 }

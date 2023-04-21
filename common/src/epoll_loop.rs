@@ -19,6 +19,10 @@ pub type TimedSources<T> = (
     Box<dyn FnMut(&mut T) -> Result<i32, CommonError>>,
 );
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum EventLoopMessage {
+    RegisterNewEventSource(/* details */),
+}
 pub struct LinuxEventLoop<T: AsRawFd + for<'a> Socket<'a, T>> {
     poll: Poll,
     events: Events,
@@ -26,6 +30,33 @@ pub struct LinuxEventLoop<T: AsRawFd + for<'a> Socket<'a, T>> {
     timed_sources: HashMap<Token, TimedSources<T>>,
     next_token: usize,
 }
+
+impl<T: AsRawFd + for<'a> Socket<'a, T>> LinuxEventLoop<T> {
+    fn register_event_source_with_event_loop(
+        &mut self,
+        event_source: T,
+        message_sender: std::sync::mpsc::Sender<EventLoopMessage>,
+    ) -> Result<Token, CommonError> {
+        // ... rest of the code ...
+        let token = self.generate_token();
+        self.sources.insert(
+            token,
+            (
+                event_source,
+                Box::new(move |socket: &mut T| {
+                    // ... your callback code ...
+                    // Send a message to the event loop
+                    message_sender
+                        .send(EventLoopMessage::RegisterNewEventSource(/* details */))
+                        .unwrap();
+                    Ok(0) // or any other result value
+                }),
+            ),
+        );
+        Ok(token)
+    }
+}
+
 impl<T: AsRawFd + for<'a> Socket<'a, T>> EventLoopTrait<T> for LinuxEventLoop<T> {
     fn new(event_capacity: usize) -> Self {
         // Create the poll

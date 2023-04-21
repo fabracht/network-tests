@@ -1,0 +1,5 @@
+{
+  "mode": "FULL_REFLECTOR",
+  "source_ip_address": "0.0.0.0:45571",
+  "ref_wait": 900
+}
