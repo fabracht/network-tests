@@ -19,7 +19,7 @@ use message_macro::BeBytes;
 use crate::common::{ErrorEstimate, ReflectedMessage, SenderMessage, MIN_UNAUTH_PADDING};
 use crate::twamp_light_sender::Configuration as TwampLightConfiguration;
 use core::time::Duration;
-use std::{os::fd::IntoRawFd, rc::Rc, sync::atomic::Ordering};
+use std::{cell::RefCell, os::fd::IntoRawFd, rc::Rc, sync::atomic::Ordering};
 
 use super::result::{NetworkStatistics, SessionResult, TwampResult};
 
@@ -72,13 +72,13 @@ impl Strategy<TwampResult, crate::CommonError> for TwampLight {
             .iter()
             .map(Session::new)
             .collect::<Vec<Session>>();
-        let rc_sessions = Rc::new(sessions);
+        let rc_sessions = Rc::new(RefCell::new(sessions));
 
         // Create the socket
         let my_socket = self.create_socket()?;
 
         // Creates the event loop with a default socket
-        let mut event_loop = EventLoop::new(1024);
+        let mut event_loop = EventLoop::new(1024)?;
 
         // Register the socket into the event loop
         let rx_token = create_rx_callback(&mut event_loop, my_socket, rc_sessions.clone())?;
@@ -119,8 +119,9 @@ impl Strategy<TwampResult, crate::CommonError> for TwampLight {
     }
 }
 
-fn calculate_session_results(rc_sessions: Rc<Vec<Session>>) -> Vec<SessionResult> {
+fn calculate_session_results(rc_sessions: Rc<RefCell<Vec<Session>>>) -> Vec<SessionResult> {
     let session_results = rc_sessions
+        .borrow_mut()
         .iter()
         .map(|session| {
             let packets = session.results.read().unwrap().clone();
@@ -202,7 +203,7 @@ fn create_tx_callback(
     event_loop: &mut EventLoop<TimestampedUdpSocket>,
     timer_spec: Itimerspec,
     rx_token: Token,
-    tx_sessions: Rc<Vec<Session>>,
+    tx_sessions: Rc<RefCell<Vec<Session>>>,
     padding: usize,
 ) -> Result<usize, CommonError> {
     let _tx_token = event_loop.add_timer(&timer_spec, &rx_token, move |inner_socket| {
@@ -210,7 +211,7 @@ fn create_tx_callback(
         let mut timestamps = vec![];
 
         let timestamp = NtpTimestamp::try_from(DateTime::utc_now())?;
-        tx_sessions.iter().for_each(|session| {
+        tx_sessions.borrow().iter().for_each(|session| {
             let twamp_test_message = SenderMessage::new(
                 session.seq_number.load(Ordering::SeqCst),
                 timestamp,
@@ -228,6 +229,7 @@ fn create_tx_callback(
             timestamps.push(timestamp);
         });
         tx_sessions
+            .borrow()
             .iter()
             .zip(timestamps.iter())
             .for_each(|(session, timestamp)| {
@@ -247,7 +249,7 @@ fn create_tx_callback(
 fn create_rx_callback(
     event_loop: &mut EventLoop<TimestampedUdpSocket>,
     my_socket: TimestampedUdpSocket,
-    rx_sessions: Rc<Vec<Session>>,
+    rx_sessions: Rc<RefCell<Vec<Session>>>,
 ) -> Result<Token, CommonError> {
     let rx_token = event_loop.register_event_source(my_socket, move |inner_socket| {
         let buffer = &mut [0; 1024];
@@ -257,7 +259,8 @@ fn create_rx_callback(
             &ReflectedMessage::try_from_be_bytes(&buffer[..result]).map_err(|e| e.into());
         log::debug!("Twamp Response Message {:?}", twamp_test_message);
         if let Ok(twamp_message) = twamp_test_message {
-            let session_option = rx_sessions
+            let borrowed_sessions = rx_sessions.borrow();
+            let session_option = borrowed_sessions
                 .iter()
                 .find(|session| session.socket_address == socket_address);
             if let Some(session) = session_option {

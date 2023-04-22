@@ -40,7 +40,9 @@ impl Itimerspec {
 }
 
 pub trait EventLoopTrait<T: AsRawFd + for<'a> Socket<'a, T>> {
-    fn new(event_capacity: usize) -> Self;
+    fn new(event_capacity: usize) -> Result<Self, CommonError>
+    where
+        Self: Sized;
     fn generate_token(&mut self) -> Token;
     fn register_event_source<F>(
         &mut self,

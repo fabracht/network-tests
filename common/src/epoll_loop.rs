@@ -1,9 +1,13 @@
+use mio::{unix::SourceFd, Events, Interest, Poll};
 use std::{
     collections::HashMap,
-    os::fd::{AsRawFd, RawFd},
+    env,
+    os::{
+        fd::{AsRawFd, FromRawFd, RawFd},
+        unix::net::UnixDatagram,
+    },
+    sync::mpsc,
 };
-
-use mio::{unix::SourceFd, Events, Interest, Poll};
 
 use crate::{
     error::CommonError,
@@ -19,58 +23,59 @@ pub type TimedSources<T> = (
     Box<dyn FnMut(&mut T) -> Result<i32, CommonError>>,
 );
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum EventLoopMessage {
-    RegisterNewEventSource(/* details */),
+#[derive(Debug)]
+pub enum IPCMessage {
+    RegisterFd(Token),
 }
+
 pub struct LinuxEventLoop<T: AsRawFd + for<'a> Socket<'a, T>> {
     poll: Poll,
     events: Events,
     pub sources: HashMap<Token, Sources<T>>,
     timed_sources: HashMap<Token, TimedSources<T>>,
     next_token: usize,
+    registration_sender: mpsc::Sender<Sources<T>>,
+    registration_receiver: mpsc::Receiver<Sources<T>>,
 }
 
 impl<T: AsRawFd + for<'a> Socket<'a, T>> LinuxEventLoop<T> {
-    fn register_event_source_with_event_loop(
-        &mut self,
-        event_source: T,
-        message_sender: std::sync::mpsc::Sender<EventLoopMessage>,
-    ) -> Result<Token, CommonError> {
-        // ... rest of the code ...
-        let token = self.generate_token();
-        self.sources.insert(
-            token,
-            (
-                event_source,
-                Box::new(move |socket: &mut T| {
-                    // ... your callback code ...
-                    // Send a message to the event loop
-                    message_sender
-                        .send(EventLoopMessage::RegisterNewEventSource(/* details */))
-                        .unwrap();
-                    Ok(0) // or any other result value
-                }),
-            ),
-        );
-        Ok(token)
+    /// Returns the path to the Inter-Process Communication (IPC) socket
+    pub fn get_communication_channel(&self) -> mpsc::Sender<Sources<T>> {
+        self.registration_sender.clone()
     }
 }
 
-impl<T: AsRawFd + for<'a> Socket<'a, T>> EventLoopTrait<T> for LinuxEventLoop<T> {
-    fn new(event_capacity: usize) -> Self {
+impl<T: AsRawFd + for<'a> Socket<'a, T> + 'static> EventLoopTrait<T> for LinuxEventLoop<T> {
+    fn new(event_capacity: usize) -> Result<Self, CommonError> {
         // Create the poll
-        let poll = Poll::new().unwrap();
+        let poll = Poll::new()?;
 
         let events = Events::with_capacity(event_capacity);
+        // Create a temporary file path
+        let temp_dir = env::temp_dir();
+        let temp_file_path = temp_dir.join(format!("event_loop_socket_{}", std::process::id()));
+        // Create a Unix domain socket
+        // Bind the socket to the temporary file path
+        let ipc_socket = UnixDatagram::bind(temp_file_path.clone()).map_err(CommonError::Io)?;
+        // Set the socket to non-blocking
+        ipc_socket.set_nonblocking(true).map_err(CommonError::Io)?;
 
-        Self {
+        // Register the Unix domain socket with the poll
+        let ipc_token = mio::Token(usize::MAX); // Use a special token for the IPC socket
+        let raw_fd = &ipc_socket.as_raw_fd();
+        let mut ipc_source = SourceFd(raw_fd);
+        poll.registry()
+            .register(&mut ipc_source, ipc_token, Interest::READABLE)?;
+        let (registration_sender, registration_receiver) = mpsc::channel();
+        Ok(Self {
             poll,
             events,
             sources: HashMap::new(),
             timed_sources: HashMap::new(),
             next_token: 0,
-        }
+            registration_sender,
+            registration_receiver,
+        })
     }
 
     fn generate_token(&mut self) -> Token {
@@ -101,28 +106,29 @@ impl<T: AsRawFd + for<'a> Socket<'a, T>> EventLoopTrait<T> for LinuxEventLoop<T>
 
     fn run(&mut self) -> Result<(), CommonError> {
         'outer: loop {
+            while let Ok((event_source, callback)) = self.registration_receiver.try_recv() {
+                let _inner_token = self.register_event_source(event_source, callback)?;
+            }
             self.poll.poll(
                 &mut self.events,
                 Some(std::time::Duration::from_millis(100)),
             )?;
-            for event in &mut self.events.iter() {
+            for event in self.events.iter() {
                 if event.is_readable() {
                     let token = event.token();
+
+                    let generate_token = Token(token.0);
+                    if let Some((source, callback)) = self.sources.get_mut(&generate_token) {
+                        callback(source)?;
+                    } else if let Some((timer_source, inner_token, callback)) =
+                        self.timed_sources.get_mut(&generate_token)
                     {
-                        log::debug!("Timed source with token {:?}", token);
-                        let generate_token = Token(token.0);
-                        if let Some((source, callback)) = self.sources.get_mut(&generate_token) {
+                        if let Some((source, _)) = self.sources.get_mut(inner_token) {
                             callback(source)?;
-                        } else if let Some((timer_source, inner_token, callback)) =
-                            self.timed_sources.get_mut(&generate_token)
-                        {
-                            if let Some((source, _)) = self.sources.get_mut(inner_token) {
-                                callback(source)?;
-                                reset_timer(timer_source)?;
-                            }
-                        } else {
-                            break 'outer;
+                            reset_timer(timer_source)?;
                         }
+                    } else {
+                        break 'outer;
                     }
                 }
             }
@@ -203,4 +209,25 @@ pub fn reset_timer(timer_raw: &mut RawFd) -> Result<(), CommonError> {
     settime_result?;
 
     Ok(())
+}
+
+pub fn create_non_blocking_unix_datagram() -> Result<UnixDatagram, CommonError> {
+    let socket_fd = unsafe { libc::socket(libc::AF_UNIX, libc::SOCK_DGRAM, 0) };
+    if socket_fd < 0 {
+        return Err(CommonError::Io(std::io::Error::last_os_error()));
+    }
+
+    let flags = unsafe { libc::fcntl(socket_fd, libc::F_GETFL) };
+    if flags < 0 {
+        let _ = unsafe { libc::close(socket_fd) };
+        return Err(CommonError::Io(std::io::Error::last_os_error()));
+    }
+
+    let result = unsafe { libc::fcntl(socket_fd, libc::F_SETFL, flags | libc::O_NONBLOCK) };
+    if result < 0 {
+        let _ = unsafe { libc::close(socket_fd) };
+        return Err(CommonError::Io(std::io::Error::last_os_error()));
+    }
+
+    Ok(unsafe { UnixDatagram::from_raw_fd(socket_fd) })
 }

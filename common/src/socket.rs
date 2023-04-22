@@ -12,6 +12,7 @@ use crate::time::DateTime;
 use super::error::CommonError;
 
 pub trait Socket<'a, T: AsRawFd> {
+    fn from_raw_fd(fd: RawFd) -> T;
     fn send(&self, message: impl BeBytes) -> Result<(usize, DateTime), CommonError>;
     fn send_to(
         &self,
@@ -73,6 +74,9 @@ impl TimestampedUdpSocket {
 }
 
 impl<'a> Socket<'a, TimestampedUdpSocket> for TimestampedUdpSocket {
+    fn from_raw_fd(fd: RawFd) -> TimestampedUdpSocket {
+        Self { inner: fd }
+    }
     fn send(&self, _buffer: impl BeBytes) -> Result<(usize, DateTime), CommonError> {
         todo!()
     }

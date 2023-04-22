@@ -45,6 +45,15 @@ impl Deref for TimestampedTcpSocket {
 
 impl TimestampedTcpSocket {
     pub fn new(socket: RawFd) -> Self {
+        unsafe {
+            libc::setsockopt(
+                socket.as_raw_fd(),
+                libc::SOL_SOCKET,
+                libc::SO_REUSEADDR,
+                1 as *const _,
+                std::mem::size_of::<i32>() as u32,
+            );
+        }
         Self { inner: socket }
     }
 
@@ -141,7 +150,7 @@ impl TimestampedTcpSocket {
             AF_INET => {
                 let sockaddr: *const sockaddr_in = &addr_storage as *const _ as *const sockaddr_in;
                 let sockaddr: &sockaddr_in = unsafe { &*sockaddr };
-                let ip = Ipv4Addr::from(sockaddr.sin_addr.s_addr.to_be_bytes());
+                let ip = Ipv4Addr::from(sockaddr.sin_addr.s_addr.to_le_bytes());
                 let port = u16::from_be(sockaddr.sin_port);
                 SocketAddr::V4(std::net::SocketAddrV4::new(ip, port))
             }
@@ -170,6 +179,7 @@ impl TimestampedTcpSocket {
         ))
     }
 
+    // Connect to a remote address
     pub fn connect(addr: SocketAddr) -> io::Result<TimestampedTcpSocket> {
         let socket_fd = match addr {
             SocketAddr::V4(_) => unsafe { libc::socket(libc::AF_INET, libc::SOCK_STREAM, 0) },
@@ -228,6 +238,10 @@ impl TimestampedTcpSocket {
 }
 
 impl<'a> Socket<'a, TimestampedTcpSocket> for TimestampedTcpSocket {
+    fn from_raw_fd(fd: RawFd) -> TimestampedTcpSocket {
+        Self { inner: fd }
+    }
+
     fn send(&self, message: impl BeBytes) -> Result<(usize, DateTime), CommonError> {
         // Convert the message to a byte array
         let bytes = message.to_be_bytes();
@@ -293,26 +307,4 @@ impl<'a> Socket<'a, TimestampedTcpSocket> for TimestampedTcpSocket {
     ) -> Result<(usize, SocketAddr, DateTime), CommonError> {
         unimplemented!("receive_from is not implemented for TimestampedTcpSocket")
     }
-}
-
-fn register_client_socket(
-    client_socket: TimestampedTcpSocket,
-    event_loop: &mut LinuxEventLoop<TimestampedTcpSocket>,
-) -> Result<(), CommonError> {
-    event_loop.register_event_source(client_socket, |socket| {
-        let mut buffer = [0; 4096];
-        match socket.receive(&mut buffer) {
-            Ok((bytes_read, timestamp)) => {
-                let data = String::from_utf8_lossy(&buffer[..bytes_read]);
-                println!("Received data from client at {:?}: {}", timestamp, data);
-            }
-            Err(err) => {
-                eprintln!("Error reading from client socket: {:?}", err);
-                // Handle errors, such as closing the connection, if needed.
-            }
-        }
-        Ok(0)
-    })?;
-
-    Ok(())
 }
