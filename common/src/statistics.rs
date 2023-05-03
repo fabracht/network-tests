@@ -2,6 +2,7 @@
 pub struct Node {
     value: f64,
     size: usize,
+    height: usize,
     left: Option<Box<Node>>,
     right: Option<Box<Node>>,
 }
@@ -11,6 +12,7 @@ impl Node {
         Node {
             value,
             size: 1,
+            height: 1,
             left: None,
             right: None,
         }
@@ -18,6 +20,23 @@ impl Node {
 
     fn size(&self) -> usize {
         self.size
+    }
+
+    fn height(&self) -> usize {
+        self.height
+    }
+
+    fn update_height(&mut self) {
+        self.height = 1 + std::cmp::max(
+            self.left.as_ref().map_or(0, |node| node.height()),
+            self.right.as_ref().map_or(0, |node| node.height()),
+        );
+    }
+
+    fn update_size(&mut self) {
+        self.size = 1
+            + self.left.as_ref().map_or(0, |node| node.size())
+            + self.right.as_ref().map_or(0, |node| node.size());
     }
 }
 
@@ -49,18 +68,20 @@ impl OrderStatisticsTree {
     }
 
     fn insert_node(&mut self, node: Option<Box<Node>>, value: f64) -> Option<Box<Node>> {
-        match node {
+        let node = match node {
             Some(mut node) => {
                 if value < node.value {
                     node.left = self.insert_node(node.left.take(), value);
                 } else {
                     node.right = self.insert_node(node.right.take(), value);
                 }
-                node.size = node.size() + 1;
-                Some(node)
+                node.update_size();
+                self.rebalance(node)
             }
-            None => Some(Box::new(Node::new(value))),
-        }
+            None => Box::new(Node::new(value)),
+        };
+
+        Some(node)
     }
 
     pub fn remove(&mut self, value: f64) {
@@ -69,60 +90,101 @@ impl OrderStatisticsTree {
     }
 
     fn remove_node(&mut self, node: Option<Box<Node>>, value: f64) -> Option<Box<Node>> {
-        match node {
+        let mut node = match node {
             Some(mut node) => {
                 if value < node.value {
                     node.left = self.remove_node(node.left.take(), value);
-                    node.size = node.left.as_ref().map_or(0, |n| n.size())
-                        + 1
-                        + node.right.as_ref().map_or(0, |n| n.size());
-                    Some(node)
                 } else if value > node.value {
                     node.right = self.remove_node(node.right.take(), value);
-                    node.size = node.left.as_ref().map_or(0, |n| n.size())
-                        + 1
-                        + node.right.as_ref().map_or(0, |n| n.size());
-                    Some(node)
                 } else if node.left.is_none() {
                     return node.right.take();
                 } else if node.right.is_none() {
                     return node.left.take();
                 } else {
                     let right = node.right.take().unwrap();
-                    let (successor, right) = self.pop_min(&right);
+                    let (successor, right) = self.pop_min(Some(right.to_owned()));
                     let mut new_node = Box::new(Node {
                         value: successor.value,
                         size: node.size() - 1,
+                        height: node.height(),
                         left: node.left.take(),
                         right,
                     });
-                    new_node.size = new_node.left.as_ref().map_or(0, |n| n.size())
-                        + 1
-                        + new_node.right.as_ref().map_or(0, |n| n.size());
-                    Some(new_node)
+                    new_node.update_height();
+                    new_node.update_size();
+                    node = new_node;
                 }
+
+                self.rebalance(node)
             }
-            None => None,
-        }
+            None => return None,
+        };
+
+        node.update_size();
+        Some(node)
     }
 
-    fn pop_min<'a>(&'a mut self, node: &'a Box<Node>) -> (&Box<Node>, Option<Box<Node>>) {
-        match &node.left {
-            Some(left) => {
-                let (min, new_left) = self.pop_min(left);
-                let mut new_node = Box::new(Node {
-                    value: min.value,
-                    size: node.size() - 1,
-                    left: new_left,
-                    right: node.right.clone(),
-                });
-                new_node.size = new_node.left.as_ref().map_or(0, |n| n.size())
-                    + 1
-                    + new_node.right.as_ref().map_or(0, |n| n.size());
-                (min, Some(new_node))
+    fn balance_factor(&self, node: &Option<Box<Node>>) -> isize {
+        node.as_ref().map_or(0, |node| {
+            node.left.as_ref().map_or(0, |n| n.height() as isize)
+                - node.right.as_ref().map_or(0, |n| n.height() as isize)
+        })
+    }
+
+    fn rotate_left(&mut self, mut node: Box<Node>) -> Box<Node> {
+        let mut new_root = node.right.take().unwrap();
+        node.right = new_root.left.take();
+        node.update_height();
+        node.update_size();
+        new_root.left = Some(node);
+        new_root.update_height();
+        new_root.update_size();
+        new_root
+    }
+
+    fn rotate_right(&mut self, mut node: Box<Node>) -> Box<Node> {
+        let mut new_root = node.left.take().unwrap();
+        node.left = new_root.right.take();
+        node.update_height();
+        node.update_size();
+        new_root.right = Some(node);
+        new_root.update_height();
+        new_root.update_size();
+        new_root
+    }
+
+    fn rebalance(&mut self, mut node: Box<Node>) -> Box<Node> {
+        node.update_height();
+        node.update_size();
+        let balance = self.balance_factor(&Some(node.clone()));
+        if balance > 1 {
+            if self.balance_factor(&node.left) < 0 {
+                node.left = Some(self.rotate_left(node.left.take().unwrap()));
             }
-            None => (node, node.right.clone()),
+            node = self.rotate_right(node);
+        } else if balance < -1 {
+            if self.balance_factor(&node.right) > 0 {
+                node.right = Some(self.rotate_right(node.right.take().unwrap()));
+            }
+            node = self.rotate_left(node);
         }
+        node
+    }
+
+    fn pop_min(&mut self, node: Option<Box<Node>>) -> (Box<Node>, Option<Box<Node>>) {
+        let mut node = node.unwrap();
+
+        if node.left.is_none() {
+            let right_child = node.right.take();
+            return (node, right_child);
+        }
+
+        let (min, new_left) = self.pop_min(node.left.take());
+        node.left = new_left;
+        node.update_size();
+        node = self.rebalance(node);
+
+        (min, Some(node))
     }
 
     fn min_node<'a>(&'a self, node: &'a Box<Node>) -> &Box<Node> {
@@ -278,9 +340,129 @@ impl OrderStatisticsTree {
 
 #[cfg(test)]
 mod tests {
+    use super::OrderStatisticsTree;
     use num_traits::ToPrimitive;
 
-    use super::*;
+    #[test]
+    fn test_left_right_rebalance() {
+        let mut tree = OrderStatisticsTree::new();
+        let data = vec![20.0, 4.0, 26.0, 3.0, 21.0, 9.0, 2.0, 7.0, 30.0, 11.0];
+        tree.insert_all(data.into_iter());
+        assert_eq!(tree.root.as_ref().unwrap().value, 20.0);
+        tree.insert(15.0);
+        assert_eq!(tree.root.as_ref().unwrap().value, 9.0);
+        assert_eq!(tree.size(), 11);
+        tree.insert(8.0);
+        assert_eq!(tree.root.as_ref().unwrap().value, 9.0);
+        assert_eq!(tree.size(), 12);
+    }
+
+    #[test]
+    fn test_insert_and_rebalance() {
+        let mut tree = OrderStatisticsTree::new();
+        let data = vec![7.0, 5.0, 3.0, 1.0, 6.0, 8.0, 9.0];
+        for &value in &data {
+            tree.insert(value);
+        }
+
+        assert_eq!(tree.root.as_ref().unwrap().value, 5.0);
+        assert_eq!(
+            tree.root.as_ref().unwrap().left.as_ref().unwrap().value,
+            3.0
+        );
+        assert_eq!(
+            tree.root.as_ref().unwrap().right.as_ref().unwrap().value,
+            7.0
+        );
+    }
+
+    #[test]
+    fn test_remove_and_rebalance() {
+        let mut tree = OrderStatisticsTree::new();
+        let data = vec![7.0, 5.0, 3.0, 1.0, 6.0, 8.0, 9.0];
+        for &value in &data {
+            tree.insert(value);
+        }
+
+        tree.remove(7.0);
+
+        assert_eq!(tree.root.as_ref().unwrap().value, 5.0);
+        assert_eq!(
+            tree.root.as_ref().unwrap().left.as_ref().unwrap().value,
+            3.0
+        );
+        assert_eq!(
+            tree.root.as_ref().unwrap().right.as_ref().unwrap().value,
+            8.0
+        );
+    }
+
+    #[test]
+    fn test_height_after_insert() {
+        let mut tree = OrderStatisticsTree::new();
+        let data = vec![3.0, 5.0, 2.0, 1.0, 4.0, 6.0, 7.0];
+        for &value in &data {
+            tree.insert(value);
+        }
+
+        assert_eq!(tree.root.as_ref().unwrap().height, 4);
+    }
+
+    #[test]
+    fn test_height_after_remove() {
+        let mut tree = OrderStatisticsTree::new();
+        let data = vec![3.0, 5.0, 2.0, 1.0, 4.0, 6.0, 7.0];
+        for &value in &data {
+            tree.insert(value);
+        }
+        assert_eq!(tree.root.as_ref().unwrap().height, 4);
+
+        tree.remove(5.0);
+
+        assert_eq!(tree.root.as_ref().unwrap().height, 3);
+    }
+
+    #[test]
+    fn test_rank() {
+        let mut tree = OrderStatisticsTree::new();
+        let data = vec![50.0, 30.0, 20.0, 40.0, 70.0, 60.0, 80.0];
+        for &value in &data {
+            tree.insert(value);
+        }
+
+        assert_eq!(tree.rank(20.0), 1);
+        assert_eq!(tree.rank(30.0), 2);
+        assert_eq!(tree.rank(40.0), 3);
+        assert_eq!(tree.rank(50.0), 4);
+        assert_eq!(tree.rank(60.0), 5);
+        assert_eq!(tree.rank(70.0), 6);
+        assert_eq!(tree.rank(80.0), 7);
+
+        // Test with non-existent value
+        assert_eq!(tree.rank(35.0), 2);
+    }
+
+    #[test]
+    fn test_statistics_methods() {
+        let mut tree = OrderStatisticsTree::new();
+        let data = vec![50.0, 30.0, 20.0, 40.0, 70.0, 60.0, 80.0];
+        for &value in &data {
+            tree.insert(value);
+        }
+
+        assert_eq!(tree.select(5), Some(70.0));
+        assert_eq!(tree.mean(), 50.0);
+        assert_eq!(tree.sum(tree.root.as_ref()), 350.0);
+        assert_eq!(tree.variance(), 400.0);
+        assert_eq!(tree.sum_squares(tree.root.as_ref()), 20_300.0);
+        assert_eq!(tree.std_dev(), 20.0);
+        assert_eq!(tree.median(), Some(50.0));
+        assert_eq!(tree.percentile(25.0), Some(35.0));
+        assert_eq!(tree.percentile(75.0), Some(65.0));
+        assert_eq!(tree.max(), Some(80.0));
+        assert_eq!(tree.min(), Some(20.0));
+    }
+
     fn test_operations_reducer(operations: &[(char, f64)], expected: &[Option<f64>]) {
         let mut tree = OrderStatisticsTree::new();
         let mut actual = Vec::new();

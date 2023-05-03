@@ -1,10 +1,7 @@
 use libc::{sockaddr, sockaddr_in, sockaddr_in6, socklen_t, AF_INET, AF_INET6, MSG_NOSIGNAL};
 use message_macro::BeBytes;
 
-use crate::{
-    epoll_loop::LinuxEventLoop, event_loop::EventLoopTrait, socket::Socket, time::DateTime,
-    CommonError,
-};
+use crate::{socket::Socket, time::DateTime, CommonError};
 use core::ops::Deref;
 
 use std::{
@@ -303,7 +300,7 @@ impl<'a> Socket<'a, TimestampedTcpSocket> for TimestampedTcpSocket {
 
     fn receive_from(
         &self,
-        buffer: &mut [u8],
+        _buffer: &mut [u8],
     ) -> Result<(usize, SocketAddr, DateTime), CommonError> {
         unimplemented!("receive_from is not implemented for TimestampedTcpSocket")
     }

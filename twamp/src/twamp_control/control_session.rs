@@ -9,20 +9,20 @@ use crate::{
 };
 
 // Define the states of the state machine as an enum
-enum ControlSessionState {
-    Initial(TimestampedTcpSocket),
-    Authentication(TimestampedTcpSocket),
-    Negotiation(TimestampedTcpSocket),
-    Start(TimestampedTcpSocket),
-    Monitor(TimestampedTcpSocket),
-    End(TimestampedTcpSocket),
-    Retry(TimestampedTcpSocket),
-    Error(TimestampedTcpSocket),
+enum ControlSessionState<'a> {
+    Initial(&'a mut TimestampedTcpSocket),
+    Authentication(&'a mut TimestampedTcpSocket),
+    Negotiation(&'a mut TimestampedTcpSocket),
+    Start(&'a mut TimestampedTcpSocket),
+    Monitor(&'a mut TimestampedTcpSocket),
+    End(&'a mut TimestampedTcpSocket),
+    Retry(&'a mut TimestampedTcpSocket),
+    Error(&'a mut TimestampedTcpSocket),
 }
 
 // Define a struct to represent the TWAMP control session
-pub struct ControlSession {
-    state: ControlSessionState,
+pub struct ControlSession<'a> {
+    state: ControlSessionState<'a>,
     twamp_sessions: Vec<TwampLight>,
     retry_count: u32, // Number of times to retry failed steps
     error_count: u32, // Number of times to tolerate errors before terminating the session
@@ -32,10 +32,10 @@ pub struct ControlSession {
     monitor_timeout: std::time::Duration,
 }
 
-impl ControlSession {
+impl<'a> ControlSession<'a> {
     // Method to create a new TWAMP control session with the initial state and TCP connection
     pub fn new(
-        tcp_stream: TimestampedTcpSocket,
+        tcp_stream: &mut TimestampedTcpSocket,
         retry_count: u32,
         error_count: u32,
     ) -> ControlSession {

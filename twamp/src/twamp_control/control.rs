@@ -12,12 +12,12 @@ use crate::{common::ServerGreeting, twamp_light_sender::result::TwampResult};
 
 use super::{control_session::ControlSession, Configuration};
 
-pub struct Control {
+pub struct Control<'a> {
     configuration: Configuration,
-    control_sessions: Vec<ControlSession>,
+    control_sessions: Vec<ControlSession<'a>>,
 }
 
-impl Control {
+impl<'a> Control<'a> {
     pub fn new(configuration: Configuration) -> Self {
         Self {
             configuration,
@@ -31,7 +31,7 @@ struct TestMessage {
     variant: Vec<u8>,
 }
 
-impl Strategy<TwampResult, CommonError> for Control {
+impl<'a> Strategy<TwampResult, CommonError> for Control<'a> {
     fn execute(&mut self) -> std::result::Result<TwampResult, CommonError> {
         // Create the TcpSocket
         let listener = mio::net::TcpListener::bind(self.configuration.source_ip_address.parse()?)?;
@@ -54,9 +54,7 @@ impl Strategy<TwampResult, CommonError> for Control {
         let _accept_token = event_loop.register_event_source(socket, move |socket| {
             let (_timestamped_socket, socket_address) = socket.accept()?;
             let server_greeting = ServerGreeting::new([3; 12], 3, [1; 16], [1; 16], 3, [10; 12])?;
-            let test_message = TestMessage {
-                variant: "Hello".to_string().into_bytes(),
-            };
+
             log::info!("Sending server greeting");
             _timestamped_socket.send(server_greeting)?;
             // log::info!("Sending test message");
@@ -66,9 +64,13 @@ impl Strategy<TwampResult, CommonError> for Control {
             let _ = event_sender.send((
                 _timestamped_socket,
                 Box::new(move |socket| {
+                    let control_session = ControlSession::new(socket, 1, 1);
                     let buffer = &mut [0; 1 << 16];
 
                     let result = socket.receive(buffer)?;
+                    socket.send(TestMessage {
+                        variant: buffer[..result.0].to_vec(),
+                    })?;
                     log::info!(
                         "Received {} bytes, at {:?} that says {}",
                         result.0,
