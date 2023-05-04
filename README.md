@@ -8,7 +8,7 @@ The aim of this project is to support the main network tests used by the industr
 
 # Implementation
 
-The project is implemented in Rust programming language. The implementation uses an event loop based on the io-uring system in Linux. There is also an implementation using the mio crate for older kernels.
+The project is implemented in Rust programming language. The implementation uses an event loop based on the mio crate.
 
 One of the project's goals is to depend on as few crates as possible to reduce package size and dependencies. This will be done as the implementation evolves.
 
@@ -26,7 +26,7 @@ cargo run --release --bin twamp -- -c "path_to_configuration_file"
 
 The Network-Tests project is still in progress, and there is a plan to support other network tests as mentioned above. The project will be updated regularly, and new features will be added to improve the network quality and service assurance tests.
 
-Thank you for using the Network-Tests project. If you have any questions, please feel free to contact us.
+Thank you for using the Network-Tests project.
 
 # Disclaimer
 

@@ -18,6 +18,3 @@ COPY --from=build /twamp/log_config.yml /usr/local/bin/log_config.yml
 COPY --from=build /twamp/configurations/receiver_config.json /usr/local/bin/receiver_config.json
 RUN ls /usr/local/bin
 CMD ["/usr/local/bin/twamp", "-c", "/usr/local/bin/receiver_config.json"]
-# CMD sleep 1000000
-# RUN apk add --no-cache openssl && \
-#     rm -rf /var/cache/apk/*
