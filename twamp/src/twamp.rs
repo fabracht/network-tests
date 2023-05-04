@@ -57,7 +57,7 @@ impl Twamp {
                 );
                 configuration
                     .validate()
-                    .map_err(|e| CommonError::ValidationError(e))?;
+                    .map_err(CommonError::ValidationError)?;
                 let twamp_light = TwampLight::new(&configuration);
                 Ok(Box::new(twamp_light))
             }
@@ -73,7 +73,7 @@ impl Twamp {
                 };
                 configuration
                     .validate()
-                    .map_err(|e| CommonError::ValidationError(e))?;
+                    .map_err(CommonError::ValidationError)?;
                 Ok(Box::new(Reflector::new(configuration)))
             }
             "FULL_SENDER" => unimplemented!(),
@@ -89,7 +89,7 @@ impl Twamp {
                 };
                 configuration
                     .validate()
-                    .map_err(|e| CommonError::ValidationError(e))?;
+                    .map_err(CommonError::ValidationError)?;
                 Ok(Box::new(Control::new(configuration)))
             }
             _ => panic!("No such mode"),

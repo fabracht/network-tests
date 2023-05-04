@@ -167,7 +167,7 @@ fn generate_random_gamma_values(alpha: f64, beta: f64, num_samples: usize, seed:
 /// Edmar Mota-Garcia and Rogelio Hasimoto-Beltran: "A new model-based clock-offset approximation over IP networks"
 /// Computer Communications, Volume 53, 2014, Pages 26-36, ISSN 0140-3664, https://doi.org/10.1016/j.comcom.2014.07.006.
 pub fn estimate(time_values: &[f64]) -> f64 {
-    let (mut alpha, mut beta) = estimate_alpha_beta_from_owd(&time_values);
+    let (mut alpha, mut beta) = estimate_alpha_beta_from_owd(time_values);
     println!("alpha: {}, beta: {}", alpha, beta);
     if beta > 1.5 {
         beta = 1.5;
@@ -180,15 +180,15 @@ pub fn estimate(time_values: &[f64]) -> f64 {
         alpha = 1.0;
     }
     let random_values =
-        generate_random_gamma_values(alpha, beta, time_values.len(), get_time_based_seed().into());
+        generate_random_gamma_values(alpha, beta, time_values.len(), get_time_based_seed());
     println!("random values: {:?}", random_values);
     // sort random values
-    let sorted = sort_values(&time_values);
-    let mut random_sorted = random_values.clone();
+    let sorted = sort_values(time_values);
+    let mut random_sorted = random_values;
     // sort in increasing order
     random_sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    let offset = estimate_offset(&sorted, &random_sorted);
-    offset
+    
+    estimate_offset(&sorted, &random_sorted)
 }
 
 /// Calculates the offset between the generated gamma values and the sorted time values.
@@ -230,10 +230,10 @@ fn estimate_offset(x_sort: &[f64], y: &[f64]) -> f64 {
     };
 
     // Find the point where the regression line crosses the x-axis (y = 0)
-    let x_cross = -gamma / beta;
+    
 
     // Return the estimated offset (x_cross).
-    x_cross
+    -gamma / beta
 }
 
 fn get_time_based_seed() -> u64 {

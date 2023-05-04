@@ -64,12 +64,12 @@ mod test {
     #[test]
     fn test_inorder_iterator() {
         let mut tree = super::OrderStatisticsTree::new();
-        for i in (0..10).into_iter().rev() {
+        for i in (0..10).rev() {
             tree.insert(i as f64);
         }
-        let mut iterator = super::TreeIterator::new(&tree, super::TraversalOrder::Inorder);
+        let iterator = super::TreeIterator::new(&tree, super::TraversalOrder::Inorder);
         let mut rank = 1;
-        while let Some(node) = iterator.next() {
+        for node in iterator {
             let value = node.value();
             let vrank = tree.rank(value);
             assert_eq!(rank, vrank);

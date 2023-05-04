@@ -239,10 +239,10 @@ pub fn derive_be_bytes(input: TokenStream) -> TokenStream {
                             }
                             // if field is a non-empty Vec
                             syn::Type::Path(tp)
-                                if tp.path.segments.len() > 0
-                                    && tp.path.segments[0].ident.to_string() == "Vec" =>
+                                if !tp.path.segments.is_empty()
+                                    && tp.path.segments[0].ident == "Vec" =>
                             {
-                                let inner_type = match solve_for_inner_type(&tp, "Vec") {
+                                let inner_type = match solve_for_inner_type(tp, "Vec") {
                                     Some(t) => t,
                                     None => {
                                         let error = syn::Error::new(
@@ -298,14 +298,14 @@ pub fn derive_be_bytes(input: TokenStream) -> TokenStream {
                                 }
                             }
                             syn::Type::Path(tp)
-                                if tp.path.segments.len() > 0
-                                    && tp.path.segments[0].ident.to_string() == "Option" =>
+                                if !tp.path.segments.is_empty()
+                                    && tp.path.segments[0].ident == "Option" =>
                             {
                                 // if field is a non-empty Option
-                                if tp.path.segments.len() > 0
-                                    && tp.path.segments[0].ident.to_string() == "Option"
+                                if !tp.path.segments.is_empty()
+                                    && tp.path.segments[0].ident == "Option"
                                 {
-                                    let inner_type = match solve_for_inner_type(&tp, "Option") {
+                                    let inner_type = match solve_for_inner_type(tp, "Option") {
                                         Some(t) => t,
                                         None => {
                                             let error = syn::Error::new(
@@ -372,7 +372,7 @@ pub fn derive_be_bytes(input: TokenStream) -> TokenStream {
                                 }
                             }
                             syn::Type::Path(tp)
-                                if tp.path.segments.len() > 0
+                                if !tp.path.segments.is_empty()
                                     && !is_primitive_type(&tp.path.segments[0].ident) =>
                             {
                                 // Struct case
@@ -391,10 +391,8 @@ pub fn derive_be_bytes(input: TokenStream) -> TokenStream {
                                 });
                             }
                             _ => {
-                                let error_message = format!(
-                                    "Unsupported type for field {}",
-                                    field_name.to_string()
-                                );
+                                let error_message =
+                                    format!("Unsupported type for field {}", field_name);
                                 let error = syn::Error::new(field.ty.span(), error_message);
                                 errors.push(error.to_compile_error());
                                 continue;
@@ -476,16 +474,10 @@ pub fn derive_be_bytes(input: TokenStream) -> TokenStream {
                 .map(|(index, variant)| {
                     let ident = &variant.ident;
                     let mut assigned_value = index as u8;
-                    match &variant.discriminant {
-                        Some((_, expr)) => match expr {
-                            syn::Expr::Lit(expr_lit) => {
-                                if let syn::Lit::Int(token) = &expr_lit.lit {
-                                    assigned_value = token.base10_parse().unwrap();
-                                }
-                            }
-                            _ => (),
-                        },
-                        None => (),
+                    if let Some((_, syn::Expr::Lit(expr_lit))) = &variant.discriminant {
+                        if let syn::Lit::Int(token) = &expr_lit.lit {
+                            assigned_value = token.base10_parse().unwrap();
+                        }
                     };
                     (ident, assigned_value)
                 })
@@ -641,9 +633,10 @@ fn parse_u8_attribute(
                         return Ok(());
                     }
                 } else {
-                    return Err(meta.error(format!(
+                    return Err(meta.error(
                         "Allowed attributes are `pos` and `size` - Example: #[U8(pos=1, size=3)]"
-                    )));
+                            .to_string(),
+                    ));
                 }
                 Ok(())
             });

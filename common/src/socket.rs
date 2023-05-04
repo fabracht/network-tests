@@ -310,7 +310,7 @@ pub fn _print_bytes(data: &[u8]) {
                         print!(".");
                     }
                 }
-                print!("\n");
+                println!();
             }
             print!("{:08x}: ", i);
         }
@@ -332,7 +332,7 @@ pub fn _print_bytes(data: &[u8]) {
             }
         }
     }
-    print!("\n");
+    println!();
 }
 
 fn _is_printable(byte: u8) -> bool {
