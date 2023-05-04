@@ -7,7 +7,7 @@
   ],
   "mode": "LIGHT_SENDER",
   "source_ip_address": "0.0.0.0:45572",
-  "collection_period": 1,
-  "packet_interval": 200,
+  "collection_period": 2,
+  "packet_interval": 100,
   "padding": 0
 }

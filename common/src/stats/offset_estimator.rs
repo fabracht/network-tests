@@ -2,29 +2,6 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 /// A simple Linear Congruential Generator (LCG) for generating pseudorandom numbers.
 ///
-/// LcgRng is a basic implementation of an LCG, a popular algorithm for generating
-/// pseudorandom numbers due to its simplicity and ease of implementation. The LCG
-/// generates numbers using the following recurrence relation:
-///
-///     X_{n+1} = (a * X_n + c) % m
-///
-/// where X_n is the current internal state, X_{n+1} is the next internal state,
-/// and a, c, and m are constant parameters.
-///
-/// Note that this implementation might not be as efficient or cryptographically
-/// secure as the RNGs provided by the `rand` crate. It is intended for cases
-/// where external dependencies are not desired.
-///
-/// # Example
-///
-/// ```
-/// use my_module::LcgRng;
-///
-/// let seed = 42; // Replace with your preferred seed value
-/// let mut rng = LcgRng::new(seed);
-/// let random_f64 = rng.gen_range(0.0..1.0);
-/// ```
-///
 /// # Parameters
 ///
 /// * `state: u64` - The current internal state of the generator.
@@ -92,24 +69,6 @@ fn sort_values(values: &[f64]) -> Vec<f64> {
 /// /// References:
 /// George Marsaglia. "Generating a Variable from the Tail of the Normal Distribution".
 /// Technometrics, Vol. 6, No. 3 (Aug., 1964), pp. 101-102.
-///
-/// # Arguments
-///
-/// * `rng: &mut R` - A mutable reference to a random number generator implementing the `Rng` trait.
-///
-/// # Returns
-///
-/// * A random value drawn from a standard normal distribution.
-///
-/// # Example
-///
-/// ```
-/// use rand::thread_rng;
-/// use my_module::marsaglia_polar_sample;
-///
-/// let mut rng = thread_rng();
-/// let normal_random_value = marsaglia_polar_sample(&mut rng);
-/// ```
 fn marsaglia_polar_sample(rng: &mut LcgRng) -> f64 {
     loop {
         let u: f64 = rng.gen_range(-1.0..1.0);
