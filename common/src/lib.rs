@@ -22,7 +22,6 @@ pub mod host;
 #[cfg(target_os = "macos")]
 pub mod kevent_loop;
 pub mod message;
-pub mod session;
 pub mod socket;
 
 pub mod stats;

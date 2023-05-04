@@ -5,9 +5,8 @@ use common::{
     error::CommonError,
     event_loop::{EventLoopTrait, Itimerspec, Token},
     host::Host,
-    session::Session,
     socket::{set_timestamping_options, Socket, TimestampedUdpSocket},
-    stats::{offset_estimator::estimate, statistics::OrderStatisticsTree},
+    stats::statistics::OrderStatisticsTree,
     time::{DateTime, NtpTimestamp},
     Strategy,
 };
@@ -16,7 +15,8 @@ use common::{
 use common::kevent_loop::MacOSEventLoop as EventLoop;
 use message_macro::BeBytes;
 
-use crate::common::{ErrorEstimate, ReflectedMessage, SenderMessage, MIN_UNAUTH_PADDING};
+use crate::common::message::{ErrorEstimate, ReflectedMessage, SenderMessage};
+use crate::common::{session::Session, MIN_UNAUTH_PADDING};
 use crate::twamp_light_sender::Configuration as TwampLightConfiguration;
 use core::time::Duration;
 use std::{cell::RefCell, os::fd::IntoRawFd, rc::Rc, sync::atomic::Ordering};
@@ -153,7 +153,7 @@ fn calculate_session_results(rc_sessions: Rc<RefCell<Vec<Session>>>) -> Vec<Sess
                     .iter()
                     .flat_map(|packet| packet.calculate_rpd().map(|rpd| rpd.as_nanos() as u32)),
             );
-            let gamlr_offset = calculate_gamlr_offset(&f_owd_tree, &b_owd_tree);
+            let gamlr_offset = session.calculate_gamlr_offset();
             let network_results = NetworkStatistics {
                 avg_rtt: rtt_tree.mean(),
                 min_rtt: rtt_tree.min().unwrap_or_default(),
@@ -198,39 +198,6 @@ fn calculate_session_results(rc_sessions: Rc<RefCell<Vec<Session>>>) -> Vec<Sess
         })
         .collect::<Vec<SessionResult>>();
     session_results
-}
-
-fn calculate_gamlr_offset(
-    f_owd_tree: &OrderStatisticsTree,
-    b_owd_tree: &OrderStatisticsTree,
-) -> Option<f64> {
-    let forward_owd: Vec<f64> = f_owd_tree
-        .iter(common::stats::tree_iterator::TraversalOrder::Inorder)
-        .map(|node| node.value())
-        .collect();
-    let backward_owd: Vec<f64> = b_owd_tree
-        .iter(common::stats::tree_iterator::TraversalOrder::Inorder)
-        .map(|node| node.value())
-        .collect();
-
-    let mut f_offset = 0.0;
-    let mut b_offset = 0.0;
-    for slice in forward_owd.chunks(5) {
-        f_offset += estimate(slice);
-    }
-    for slice in backward_owd.chunks(5) {
-        b_offset += estimate(slice);
-    }
-
-    f_offset /= forward_owd.len() as f64;
-    b_offset /= backward_owd.len() as f64;
-
-    let gamlr_offset = if forward_owd.len() >= 5 {
-        Some((f_offset - b_offset) / 2.0)
-    } else {
-        None
-    };
-    gamlr_offset
 }
 
 fn create_tx_callback(

@@ -9,7 +9,6 @@ use std::{os::fd::IntoRawFd, sync::atomic::Ordering};
 
 use ::common::{
     error::CommonError,
-    session::Session,
     socket::{Socket, TimestampedUdpSocket},
     Strategy, TestResult,
 };
@@ -20,7 +19,8 @@ use common::{
 };
 
 use crate::{
-    common::{ErrorEstimate, ReflectedMessage, SenderMessage, MIN_UNAUTH_PADDING},
+    common::message::{ErrorEstimate, ReflectedMessage, SenderMessage},
+    common::{session::Session, MIN_UNAUTH_PADDING},
     twamp_light_sender::result::TwampResult,
 };
 

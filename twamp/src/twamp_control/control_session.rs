@@ -1,10 +1,16 @@
 #![allow(dead_code)]
 use common::{socket::Socket, tcp_socket::TimestampedTcpSocket, time::NtpTimestamp};
+use message_macro::BeBytes;
 
 use crate::{
-    common::{ControlMessageType, ServerGreeting, ServerStart},
+    common::message::{ControlMessageType, ServerGreeting, ServerStart},
     twamp_light_sender::twamp_light::TwampLight,
 };
+
+#[derive(BeBytes, Debug)]
+struct TestMessage {
+    variant: Vec<u8>,
+}
 
 // Define the states of the state machine as an enum
 enum ControlSessionState {
@@ -20,6 +26,7 @@ enum ControlSessionState {
 
 // Define a struct to represent the TWAMP control session
 pub struct ControlSession {
+    id: i32,
     state: ControlSessionState,
     twamp_sessions: Vec<TwampLight>,
     retry_count: u32, // Number of times to retry failed steps
@@ -32,8 +39,9 @@ pub struct ControlSession {
 
 impl ControlSession {
     // Method to create a new TWAMP control session with the initial state and TCP connection
-    pub fn new(retry_count: u32, error_count: u32) -> ControlSession {
+    pub fn new(token: i32, retry_count: u32, error_count: u32) -> ControlSession {
         ControlSession {
+            id: token,
             state: ControlSessionState::Initial,
             twamp_sessions: Vec::new(),
             retry_count,
@@ -54,21 +62,25 @@ impl ControlSession {
     pub fn transition(&mut self, socket: &mut TimestampedTcpSocket) {
         match self.state {
             ControlSessionState::Initial => {
-                let server_greeting =
+                let _server_greeting =
                     ServerGreeting::new([3; 12], 3, [1; 16], [1; 16], 3, [10; 12]).unwrap();
-
-                // log::info!("Sending server greeting");
-                // timestamped_socket.send(server_greeting)?;
-                // _timestamped_socket.send(test_message)?;
-                // Start the control connection
-
+                let test_message = TestMessage {
+                    variant: b"Hi there".to_vec(),
+                };
                 log::info!("Sending test message");
-                let result = socket.send(server_greeting);
+                let result = socket.send(test_message);
                 match result {
                     // If successful, transition to the authentication state
-                    Ok((_result, _)) => self.state = ControlSessionState::Authentication,
+                    Ok((_result, _)) => {
+                        log::info!("Transition to authentication");
+                        self.state = ControlSessionState::Authentication
+                    }
                     // If failed, transition to the error state or retry state
-                    Err(_e) => self.state = ControlSessionState::Error,
+                    Err(_e) => {
+                        log::info!("Transition to error {:?}", _e);
+
+                        self.state = ControlSessionState::Error
+                    }
                 }
             }
             ControlSessionState::Authentication => {
@@ -82,6 +94,7 @@ impl ControlSession {
             ControlSessionState::Negotiation => {
                 let _message =
                     ServerStart::new(ControlMessageType::ServerStart, NtpTimestamp::now());
+
                 // Negotiate session parameters
                 // If successful, transition to the start state
                 // If failed, transition to the retry state
@@ -92,6 +105,21 @@ impl ControlSession {
                 // If successful, transition to the monitor state
                 // If failed, transition to the retry state
                 // Set a timeout for the TWAMP-Test packet transmission
+                let buffer = &mut [0; 1 << 16];
+
+                let result = socket.receive(buffer);
+                if let Ok(result) = result {
+                    let _ = socket.send(TestMessage {
+                        variant: buffer[..result.0].to_vec(),
+                    });
+                    log::info!(
+                        "Received {} bytes, at {:?} that says {} with token {:?}",
+                        result.0,
+                        result.1,
+                        std::str::from_utf8(buffer).unwrap(),
+                        self.id
+                    );
+                }
             }
             ControlSessionState::Monitor => {
                 // Monitor each test session
@@ -116,6 +144,7 @@ impl ControlSession {
                 // Handle the error
                 // If recoverable, transition back to the previous state
                 // If not recoverable, terminate the control connection and stop all test sessions
+                log::error!("An error in a transition has occurred");
             }
         }
     }

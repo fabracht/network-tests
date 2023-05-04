@@ -44,20 +44,29 @@ impl LcgRng {
 }
 
 /// Estimates the alpha and beta parameters for the Gamma distribution based on the sample data provided.
-fn estimate_alpha_beta_from_owd(x: &[f64]) -> (f64, f64) {
-    let n = x.len() as f64;
-    let sum_x = x.iter().sum::<f64>();
+fn estimate_alpha_beta_from_owd<'a, I>(x: I) -> (f64, f64)
+where
+    I: IntoIterator<Item = &'a f64>,
+    I::IntoIter: ExactSizeIterator + Clone,
+{
+    let x_vec: Vec<_> = x.into_iter().cloned().collect();
+    let n = x_vec.len() as f64;
+    let sum_x = x_vec.iter().sum::<f64>();
     let mean_x = sum_x / n;
-    let sum_sq_diff = x.iter().map(|&xi| (xi - mean_x).powi(2)).sum::<f64>();
+    let sum_sq_diff = x_vec.iter().map(|&xi| (xi - mean_x).powi(2)).sum::<f64>();
     let var_x = sum_sq_diff / (n - 1.0);
     let alpha = mean_x.powi(2) / var_x;
     let beta = var_x / mean_x;
     (alpha, beta)
 }
 
-/// Sorts the input vector in ascending order and returns the sorted vector.
-fn sort_values(values: &[f64]) -> Vec<f64> {
-    let mut sorted_values = values.to_vec();
+/// Sorts the input values in ascending order and returns the sorted vector.
+fn sort_values<'a, I>(values: I) -> Vec<f64>
+where
+    I: IntoIterator<Item = &'a f64>,
+    I::IntoIter: ExactSizeIterator + Clone,
+{
+    let mut sorted_values: Vec<_> = values.into_iter().cloned().collect();
     sorted_values.sort_by(|a, b| a.partial_cmp(b).unwrap());
     sorted_values
 }
@@ -125,8 +134,13 @@ fn generate_random_gamma_values(alpha: f64, beta: f64, num_samples: usize, seed:
 ///
 /// Edmar Mota-Garcia and Rogelio Hasimoto-Beltran: "A new model-based clock-offset approximation over IP networks"
 /// Computer Communications, Volume 53, 2014, Pages 26-36, ISSN 0140-3664, https://doi.org/10.1016/j.comcom.2014.07.006.
-pub fn estimate(time_values: &[f64]) -> f64 {
-    let (mut alpha, mut beta) = estimate_alpha_beta_from_owd(time_values);
+pub fn estimate<I>(time_values: I) -> f64
+where
+    I: IntoIterator<Item = f64>,
+{
+    let time_values_vec: Vec<f64> = time_values.into_iter().collect();
+    let n = time_values_vec.len();
+    let (mut alpha, mut beta) = estimate_alpha_beta_from_owd(&time_values_vec);
     println!("alpha: {}, beta: {}", alpha, beta);
     if beta > 1.5 {
         beta = 1.5;
@@ -138,11 +152,10 @@ pub fn estimate(time_values: &[f64]) -> f64 {
     } else if alpha < 1.0 {
         alpha = 1.0;
     }
-    let random_values =
-        generate_random_gamma_values(alpha, beta, time_values.len(), get_time_based_seed());
+    let random_values = generate_random_gamma_values(alpha, beta, n, get_time_based_seed());
     println!("random values: {:?}", random_values);
     // sort random values
-    let sorted = sort_values(time_values);
+    let sorted = sort_values(&time_values_vec);
     let mut random_sorted = random_values;
     // sort in increasing order
     random_sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
