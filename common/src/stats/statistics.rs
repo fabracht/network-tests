@@ -336,7 +336,7 @@ impl OrderStatisticsTree {
         }
 
         let size = self.size();
-        let max_rank = (size - 1) as f64;
+        let max_rank = (size.checked_sub(1)?) as f64;
         let rank = (p / 100.0 * max_rank).floor() as usize;
         let alpha = p / 100.0 * max_rank - rank as f64;
 
