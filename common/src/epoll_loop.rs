@@ -15,13 +15,6 @@ use crate::{
     socket::Socket,
 };
 
-// pub type Source<T> = (T, Box<dyn FnMut(&mut T) -> Result<i32, CommonError>>);
-// pub type TimedSource<T> = (
-//     RawFd,
-//     Token,
-//     Box<dyn FnMut(&mut T) -> Result<i32, CommonError>>,
-// );
-
 pub struct LinuxEventLoop<T: AsRawFd + for<'a> Socket<'a, T>> {
     poll: Poll,
     events: Events,
@@ -162,6 +155,45 @@ impl<T: AsRawFd + for<'a> Socket<'a, T> + 'static> EventLoopTrait<T> for LinuxEv
         self.sources
             .insert(generate_token, (event_source, Box::new(callback)));
         Ok(generate_token)
+    }
+
+    fn unregister_event_source(&mut self, token: Token) -> Result<(), CommonError> {
+        if let Some((event_source, _)) = self.sources.remove(&token) {
+            let raw_fd = &event_source.as_raw_fd();
+            let mut source_fd = SourceFd(raw_fd);
+            self.poll
+                .registry()
+                .deregister(&mut source_fd)
+                .map_err(|e| {
+                    CommonError::from(format!("Failed to deregister event source: {}", e))
+                })?;
+        } else {
+            return Err(CommonError::from(format!(
+                "Failed to unregister event source: token not found"
+            )));
+        }
+        Ok(())
+    }
+
+    fn unregister_timed_event_source(&mut self, token: Token) -> Result<(), CommonError> {
+        if let Some((timer_fd, event_token, _)) = self.timed_sources.remove(&token) {
+            // Deregister timer_fd
+            let mut timer_source = SourceFd(&timer_fd);
+            self.poll
+                .registry()
+                .deregister(&mut timer_source)
+                .map_err(|e| {
+                    CommonError::from(format!("Failed to deregister timed event source: {}", e))
+                })?;
+
+            // Unregister the associated event source
+            self.unregister_event_source(event_token)?;
+        } else {
+            return Err(CommonError::from(format!(
+                "Failed to unregister timed event source: token not found"
+            )));
+        }
+        Ok(())
     }
 }
 
