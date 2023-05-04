@@ -11,4 +11,3 @@ proc-macro = true
 [dependencies]
 syn = { version = "2.0", features = ["extra-traits", "parsing"] }
 quote = "1.0"
-byteorder = "1.4.3"

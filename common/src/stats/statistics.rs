@@ -382,7 +382,7 @@ impl OrderStatisticsTree {
 #[cfg(test)]
 mod tests {
     use super::OrderStatisticsTree;
-    use num_traits::ToPrimitive;
+    // use num_traits::ToPrimitive;
 
     #[test]
     fn test_left_right_rebalance() {
@@ -514,7 +514,7 @@ mod tests {
                 'd' => tree.remove(value),
                 'm' => actual.push(tree.median()),
                 'r' => actual.push(Some(tree.rank(value) as f64)),
-                's' => actual.push(tree.select(value.to_usize().unwrap_or_default())),
+                's' => actual.push(tree.select(value as usize)),
                 'v' => actual.push(Some(tree.variance())),
                 't' => actual.push(Some(tree.std_dev())),
                 'p' => actual.push(tree.percentile(value)),

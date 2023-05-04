@@ -16,7 +16,6 @@ serde_json = "1.0"
 thiserror = "1.0"
 validator = { version = "0.16", features = ["derive"] }
 log4rs = "1.2.0"
-num-traits = "0.2"
 common = { path = "../common" }
 message_macro = { path = "../message_macro/message_macro" }
 clap = { version = "4.2.1", features = ["derive"] }
