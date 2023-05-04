@@ -27,6 +27,7 @@ pub mod socket;
 pub mod stats;
 pub mod tcp_socket;
 pub mod time;
+pub mod udp_socket;
 /// A trait representing a TWAMP strategy, which is an abstraction for TWAMP implementors to
 /// customize the runtime of the test. Implementors of this trait provide a custom implementation
 /// of the `execute` method, which is called to execute the TWAMP test with the specified

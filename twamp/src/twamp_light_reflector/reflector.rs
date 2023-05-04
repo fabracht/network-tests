@@ -7,15 +7,11 @@ use message_macro::BeBytes;
 
 use std::{os::fd::IntoRawFd, sync::atomic::Ordering};
 
-use ::common::{
-    error::CommonError,
-    socket::{Socket, TimestampedUdpSocket},
-    Strategy, TestResult,
-};
+use ::common::{error::CommonError, socket::Socket, Strategy, TestResult};
 use common::{
     event_loop::EventLoopTrait,
-    socket::set_timestamping_options,
     time::{DateTime, NtpTimestamp},
+    udp_socket::{set_timestamping_options, TimestampedUdpSocket},
 };
 
 use crate::{

@@ -5,9 +5,10 @@ use common::{
     error::CommonError,
     event_loop::{EventLoopTrait, Itimerspec, Token},
     host::Host,
-    socket::{set_timestamping_options, Socket, TimestampedUdpSocket},
+    socket::Socket,
     stats::statistics::OrderStatisticsTree,
     time::{DateTime, NtpTimestamp},
+    udp_socket::{set_timestamping_options, TimestampedUdpSocket},
     Strategy,
 };
 
