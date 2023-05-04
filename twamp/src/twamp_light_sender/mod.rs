@@ -16,6 +16,8 @@ pub struct Configuration {
     pub packet_interval: u64,
     #[validate(range(min = 0, max = 1024))]
     pub padding: usize,
+    #[validate(range(min = 0, max = 1000))]
+    pub last_message_timeout: u64,
 }
 
 const NETWORK_PRECISION: i32 = 3;
@@ -28,6 +30,7 @@ impl Configuration {
         duration: u64,
         packet_interval: u64,
         padding: usize,
+        last_message_timeout: u64,
     ) -> Self {
         Self {
             hosts: hosts.to_owned(),
@@ -36,6 +39,7 @@ impl Configuration {
             duration,
             packet_interval,
             padding,
+            last_message_timeout,
         }
     }
 }

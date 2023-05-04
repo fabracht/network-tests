@@ -63,7 +63,6 @@ impl Session {
 
     pub fn get_latest_result(&self) -> TimestampsResult {
         let results = self.results.write().unwrap();
-        let offset = self.calculate_gamlr_offset();
         let last_result = results.last().unwrap();
         TimestampsResult {
             session: SessionPackets {
@@ -75,7 +74,6 @@ impl Session {
                     t2: last_result.t2,
                     t3: last_result.t3,
                     t4: last_result.t4,
-                    offset,
                 }]),
             },
             error: None,
@@ -112,43 +110,44 @@ impl Session {
             if results.len() < 5 {
                 return None;
             }
+            let mut f_owd_tree = OrderStatisticsTree::new();
+            let mut b_owd_tree = OrderStatisticsTree::new();
+            let packets = self.results.read().unwrap().clone();
+
+            f_owd_tree.insert_all(packets.iter().flat_map(|packet| {
+                packet
+                    .calculate_owd_forward()
+                    .map(|owd| owd.as_nanos() as u32)
+            }));
+            b_owd_tree.insert_all(packets.iter().flat_map(|packet| {
+                packet
+                    .calculate_owd_backward()
+                    .map(|owd| owd.as_nanos() as u32)
+            }));
+            let forward_owd: Vec<f64> = f_owd_tree
+                .iter(common::stats::tree_iterator::TraversalOrder::Inorder)
+                .map(|node| node.value())
+                .collect();
+            let backward_owd: Vec<f64> = b_owd_tree
+                .iter(common::stats::tree_iterator::TraversalOrder::Inorder)
+                .map(|node| node.value())
+                .collect();
+
+            let mut f_offset = 0.0;
+            let mut b_offset = 0.0;
+
+            for slice in forward_owd.chunks(5) {
+                f_offset += estimate(slice.to_owned());
+            }
+            for slice in backward_owd.chunks(5) {
+                b_offset += estimate(slice.to_owned());
+            }
+
+            f_offset /= forward_owd.len() as f64;
+            b_offset /= backward_owd.len() as f64;
+
+            return Some((f_offset - b_offset) / 2.0);
         }
-        let mut f_owd_tree = OrderStatisticsTree::new();
-        let mut b_owd_tree = OrderStatisticsTree::new();
-        let packets = self.results.read().unwrap().clone();
-
-        f_owd_tree.insert_all(packets.iter().flat_map(|packet| {
-            packet
-                .calculate_owd_forward()
-                .map(|owd| owd.as_nanos() as u32)
-        }));
-        b_owd_tree.insert_all(packets.iter().flat_map(|packet| {
-            packet
-                .calculate_owd_backward()
-                .map(|owd| owd.as_nanos() as u32)
-        }));
-        let forward_owd: Vec<f64> = f_owd_tree
-            .iter(common::stats::tree_iterator::TraversalOrder::Inorder)
-            .map(|node| node.value())
-            .collect();
-        let backward_owd: Vec<f64> = b_owd_tree
-            .iter(common::stats::tree_iterator::TraversalOrder::Inorder)
-            .map(|node| node.value())
-            .collect();
-
-        let mut f_offset = 0.0;
-        let mut b_offset = 0.0;
-
-        for slice in forward_owd.chunks(5) {
-            f_offset += estimate(slice.to_owned());
-        }
-        for slice in backward_owd.chunks(5) {
-            b_offset += estimate(slice.to_owned());
-        }
-
-        f_offset /= forward_owd.len() as f64;
-        b_offset /= backward_owd.len() as f64;
-
-        Some((f_offset - b_offset) / 2.0)
+        None
     }
 }

@@ -27,7 +27,6 @@ impl Message for SenderMessage {
             t2: None,
             t3: None,
             t4: None,
-            offset: None,
         }
     }
 }
@@ -70,7 +69,6 @@ impl Message for ReflectedMessage {
             t2: DateTime::try_from(self.receive_timestamp).ok(),
             t3: DateTime::try_from(self.timestamp).ok(),
             t4: None,
-            offset: None,
         }
     }
 }

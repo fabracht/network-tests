@@ -15,7 +15,7 @@ impl From<Token> for usize {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq, Copy)]
 pub struct Itimerspec {
     pub it_interval: Duration,
     pub it_value: Duration,
@@ -40,7 +40,7 @@ pub trait EventLoopTrait<T: AsRawFd + for<'a> Socket<'a, T>> {
     fn new(event_capacity: usize) -> Result<Self, CommonError>
     where
         Self: Sized;
-    fn generate_token(&mut self) -> Token;
+    fn generate_token(&self) -> Token;
     fn register_event_source<F>(
         &mut self,
         event_source: T,
@@ -51,7 +51,7 @@ pub trait EventLoopTrait<T: AsRawFd + for<'a> Socket<'a, T>> {
     fn unregister_event_source(&mut self, token: Token) -> Result<(), CommonError>;
     fn unregister_timed_event_source(&mut self, token: Token) -> Result<(), CommonError>;
     fn run(&mut self) -> Result<(), CommonError>;
-    fn add_duration(&mut self, time_spec: &Itimerspec) -> Result<Token, CommonError>;
+    fn add_duration(&self, time_spec: &Itimerspec) -> Result<Token, CommonError>;
     fn add_timer<F>(
         &mut self,
         time_spec: &Itimerspec,

@@ -33,6 +33,8 @@ pub struct TwampLight {
     duration: Duration,
     /// Interval at which the packets are sent
     packet_interval: Duration,
+    /// Timeout after which the last message is considered lost
+    last_message_timeout: Duration,
     /// Padding to add to the packet
     padding: usize,
 }
@@ -45,6 +47,7 @@ impl TwampLight {
             duration: Duration::from_secs(configuration.duration),
             packet_interval: Duration::from_millis(configuration.packet_interval),
             padding: configuration.padding,
+            last_message_timeout: Duration::from_secs(configuration.last_message_timeout),
         }
     }
 
@@ -80,7 +83,10 @@ impl Strategy<TwampResult, crate::CommonError> for TwampLight {
 
         // Creates the event loop with a default socket
         let mut event_loop = EventLoop::new(1024)?;
-
+        event_loop.set_overtime(Itimerspec {
+            it_interval: self.last_message_timeout,
+            it_value: self.last_message_timeout,
+        });
         // Register the socket into the event loop
         let rx_token = create_rx_callback(&mut event_loop, my_socket, rc_sessions.clone())?;
 
@@ -100,7 +106,7 @@ impl Strategy<TwampResult, crate::CommonError> for TwampLight {
         )?;
 
         let duration_spec = Itimerspec {
-            it_interval: Duration::from_micros(1),
+            it_interval: Duration::ZERO,
             it_value: self.duration,
         };
 
@@ -256,10 +262,10 @@ fn create_rx_callback(
     let rx_token = event_loop.register_event_source(my_socket, move |inner_socket, _| {
         let buffer = &mut [0; 1024];
         let (result, socket_address, timestamp) = inner_socket.receive_from(buffer)?;
-        log::debug!("Received {} bytes from {}", result, socket_address);
+        log::info!("Received {} bytes from {}", result, socket_address);
         let twamp_test_message: &Result<(ReflectedMessage, usize), CommonError> =
             &ReflectedMessage::try_from_be_bytes(&buffer[..result]).map_err(|e| e.into());
-        log::debug!("Twamp Response Message {:?}", twamp_test_message);
+        log::info!("Twamp Response Message {:?}", twamp_test_message);
         if let Ok(twamp_message) = twamp_test_message {
             let borrowed_sessions = rx_sessions.borrow();
             let session_option = borrowed_sessions

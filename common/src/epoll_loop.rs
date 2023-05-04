@@ -5,7 +5,8 @@ use std::{
         fd::{AsRawFd, FromRawFd, RawFd},
         unix::net::UnixDatagram,
     },
-    sync::mpsc,
+    sync::{atomic::AtomicUsize, mpsc},
+    time::Duration,
 };
 
 use crate::{
@@ -20,15 +21,20 @@ pub struct LinuxEventLoop<T: AsRawFd + for<'a> Socket<'a, T>> {
     events: Events,
     pub sources: HashMap<Token, Source<T>>,
     timed_sources: HashMap<Token, TimedSource<T>>,
-    next_token: usize,
+    next_token: AtomicUsize,
     registration_sender: mpsc::Sender<Source<T>>,
     registration_receiver: mpsc::Receiver<Source<T>>,
+    overtime: Option<Itimerspec>,
 }
 
 impl<T: AsRawFd + for<'a> Socket<'a, T>> LinuxEventLoop<T> {
     /// Returns the path to the Inter-Process Communication (IPC) socket
     pub fn get_communication_channel(&self) -> mpsc::Sender<Source<T>> {
         self.registration_sender.clone()
+    }
+
+    pub fn set_overtime(&mut self, overtime: Itimerspec) {
+        self.overtime = Some(overtime);
     }
 }
 
@@ -44,15 +50,19 @@ impl<T: AsRawFd + for<'a> Socket<'a, T> + 'static> EventLoopTrait<T> for LinuxEv
             events,
             sources: HashMap::new(),
             timed_sources: HashMap::new(),
-            next_token: 0,
+            next_token: AtomicUsize::new(0),
             registration_sender,
             registration_receiver,
+            overtime: None,
         })
     }
 
-    fn generate_token(&mut self) -> Token {
-        let token = Token(self.next_token);
-        self.next_token += 1;
+    fn generate_token(&self) -> Token {
+        let token = Token(self.next_token.load(std::sync::atomic::Ordering::SeqCst));
+        log::info!("Token: {:?}", token);
+        self.next_token
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        log::info!("Token: {:?}", self.next_token);
         token
     }
 
@@ -76,11 +86,23 @@ impl<T: AsRawFd + for<'a> Socket<'a, T> + 'static> EventLoopTrait<T> for LinuxEv
                         self.timed_sources.get_mut(&generate_token)
                     {
                         if let Some((source, _)) = self.sources.get_mut(inner_token) {
+                            log::warn!("Timed event");
                             callback(source, *inner_token)?;
                             reset_timer(timer_source)?;
                         }
                     } else {
-                        break 'outer;
+                        if self.overtime.is_none() {
+                            log::debug!("No overtime");
+                            break 'outer;
+                        }
+                        log::debug!("Entering Overtime {:?}", self.overtime);
+
+                        let _ = self.add_duration(&self.overtime.unwrap_or(Itimerspec {
+                            it_interval: Duration::ZERO,
+                            it_value: Duration::ZERO,
+                        }))?;
+                        self.timed_sources.clear();
+                        self.overtime = None;
                     }
                 }
             }
@@ -119,7 +141,7 @@ impl<T: AsRawFd + for<'a> Socket<'a, T> + 'static> EventLoopTrait<T> for LinuxEv
         Ok(new_token)
     }
 
-    fn add_duration(&mut self, time_spec: &Itimerspec) -> Result<Token, CommonError> {
+    fn add_duration(&self, time_spec: &Itimerspec) -> Result<Token, CommonError> {
         let timer_fd = unsafe {
             let fd = libc::timerfd_create(libc::CLOCK_REALTIME, libc::TFD_NONBLOCK);
             let itimer_spec = itimerspec_to_libc(time_spec);

@@ -30,8 +30,6 @@ pub struct PacketResults {
     pub t3: Option<DateTime>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub t4: Option<DateTime>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub offset: Option<f64>,
 }
 
 impl serde::Serialize for PacketResults {

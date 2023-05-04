@@ -81,11 +81,8 @@ where
 fn marsaglia_polar_sample(rng: &mut LcgRng) -> f64 {
     loop {
         let u: f64 = rng.gen_range(-1.0..1.0);
-        println!("u: {}", u);
         let v: f64 = rng.gen_range(-1.0..1.0);
-        println!("v: {}", v);
         let s = u * u + v * v;
-        println!("s: {}", s);
         if s < 1.0 && s != 0.0 {
             let z0 = u * (-2.0 * s.ln() / s).sqrt();
             return z0;
@@ -98,19 +95,15 @@ fn marsaglia_polar_sample(rng: &mut LcgRng) -> f64 {
 /// George Marsaglia, Wai Wan Tsang. "A Simple Method for Generating Gamma Variables".
 /// ACM Transactions on Mathematical Software, Vol. 26, No. 3, September 2000, Pages 363-372.
 fn generate_random_gamma_values(alpha: f64, beta: f64, num_samples: usize, seed: u64) -> Vec<f64> {
-    println!("Create LCG with seed: {}", seed);
     let mut rng = LcgRng::new(seed);
-    println!("For sample...num_samples");
     (0..num_samples)
         .map(|_| {
             let d = alpha - 1.0 / 3.0;
             let c = (1.0 / 3.0) / d.sqrt();
 
             loop {
-                println!("Sampling...");
                 let x = marsaglia_polar_sample(&mut rng);
                 let v = 1.0 + c * x;
-                println!("v: {}", v);
                 if v <= 0.0 {
                     continue;
                 }
@@ -141,7 +134,6 @@ where
     let time_values_vec: Vec<f64> = time_values.into_iter().collect();
     let n = time_values_vec.len();
     let (mut alpha, mut beta) = estimate_alpha_beta_from_owd(&time_values_vec);
-    println!("alpha: {}, beta: {}", alpha, beta);
     if beta > 1.5 {
         beta = 1.5;
     } else if beta < 0.1 {
@@ -153,7 +145,6 @@ where
         alpha = 1.0;
     }
     let random_values = generate_random_gamma_values(alpha, beta, n, get_time_based_seed());
-    println!("random values: {:?}", random_values);
     // sort random values
     let sorted = sort_values(&time_values_vec);
     let mut random_sorted = random_values;
