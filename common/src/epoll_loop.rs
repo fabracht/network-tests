@@ -1,7 +1,6 @@
 use mio::{unix::SourceFd, Events, Interest, Poll};
 use std::{
     collections::HashMap,
-    env,
     os::{
         fd::{AsRawFd, FromRawFd, RawFd},
         unix::net::UnixDatagram,
@@ -11,36 +10,31 @@ use std::{
 
 use crate::{
     error::CommonError,
-    event_loop::{itimerspec_to_libc, EventLoopTrait, Itimerspec, Token},
+    event_loop::{itimerspec_to_libc, EventLoopTrait, Itimerspec, Source, TimedSource, Token},
     libc_call,
     socket::Socket,
 };
 
-pub type Sources<T> = (T, Box<dyn FnMut(&mut T) -> Result<i32, CommonError>>);
-pub type TimedSources<T> = (
-    RawFd,
-    Token,
-    Box<dyn FnMut(&mut T) -> Result<i32, CommonError>>,
-);
-
-#[derive(Debug)]
-pub enum IPCMessage {
-    RegisterFd(Token),
-}
+// pub type Source<T> = (T, Box<dyn FnMut(&mut T) -> Result<i32, CommonError>>);
+// pub type TimedSource<T> = (
+//     RawFd,
+//     Token,
+//     Box<dyn FnMut(&mut T) -> Result<i32, CommonError>>,
+// );
 
 pub struct LinuxEventLoop<T: AsRawFd + for<'a> Socket<'a, T>> {
     poll: Poll,
     events: Events,
-    pub sources: HashMap<Token, Sources<T>>,
-    timed_sources: HashMap<Token, TimedSources<T>>,
+    pub sources: HashMap<Token, Source<T>>,
+    timed_sources: HashMap<Token, TimedSource<T>>,
     next_token: usize,
-    registration_sender: mpsc::Sender<Sources<T>>,
-    registration_receiver: mpsc::Receiver<Sources<T>>,
+    registration_sender: mpsc::Sender<Source<T>>,
+    registration_receiver: mpsc::Receiver<Source<T>>,
 }
 
 impl<T: AsRawFd + for<'a> Socket<'a, T>> LinuxEventLoop<T> {
     /// Returns the path to the Inter-Process Communication (IPC) socket
-    pub fn get_communication_channel(&self) -> mpsc::Sender<Sources<T>> {
+    pub fn get_communication_channel(&self) -> mpsc::Sender<Source<T>> {
         self.registration_sender.clone()
     }
 }
@@ -49,23 +43,8 @@ impl<T: AsRawFd + for<'a> Socket<'a, T> + 'static> EventLoopTrait<T> for LinuxEv
     fn new(event_capacity: usize) -> Result<Self, CommonError> {
         // Create the poll
         let poll = Poll::new()?;
-
         let events = Events::with_capacity(event_capacity);
-        // Create a temporary file path
-        let temp_dir = env::temp_dir();
-        let temp_file_path = temp_dir.join(format!("event_loop_socket_{}", std::process::id()));
-        // Create a Unix domain socket
-        // Bind the socket to the temporary file path
-        let ipc_socket = UnixDatagram::bind(temp_file_path.clone()).map_err(CommonError::Io)?;
-        // Set the socket to non-blocking
-        ipc_socket.set_nonblocking(true).map_err(CommonError::Io)?;
 
-        // Register the Unix domain socket with the poll
-        let ipc_token = mio::Token(usize::MAX); // Use a special token for the IPC socket
-        let raw_fd = &ipc_socket.as_raw_fd();
-        let mut ipc_source = SourceFd(raw_fd);
-        poll.registry()
-            .register(&mut ipc_source, ipc_token, Interest::READABLE)?;
         let (registration_sender, registration_receiver) = mpsc::channel();
         Ok(Self {
             poll,
@@ -84,26 +63,6 @@ impl<T: AsRawFd + for<'a> Socket<'a, T> + 'static> EventLoopTrait<T> for LinuxEv
         token
     }
 
-    fn register_event_source<F>(
-        &mut self,
-        event_source: T,
-        callback: F,
-    ) -> Result<Token, CommonError>
-    where
-        F: FnMut(&mut T) -> Result<i32, CommonError> + 'static,
-    {
-        let binding = &event_source.as_raw_fd();
-        let mut source = SourceFd(binding);
-        let generate_token = self.generate_token();
-        let token = mio::Token(generate_token.0);
-        self.poll
-            .registry()
-            .register(&mut source, token, Interest::READABLE)?;
-        self.sources
-            .insert(generate_token, (event_source, Box::new(callback)));
-        Ok(generate_token)
-    }
-
     fn run(&mut self) -> Result<(), CommonError> {
         'outer: loop {
             while let Ok((event_source, callback)) = self.registration_receiver.try_recv() {
@@ -119,12 +78,12 @@ impl<T: AsRawFd + for<'a> Socket<'a, T> + 'static> EventLoopTrait<T> for LinuxEv
 
                     let generate_token = Token(token.0);
                     if let Some((source, callback)) = self.sources.get_mut(&generate_token) {
-                        callback(source)?;
+                        callback(source, generate_token)?;
                     } else if let Some((timer_source, inner_token, callback)) =
                         self.timed_sources.get_mut(&generate_token)
                     {
                         if let Some((source, _)) = self.sources.get_mut(inner_token) {
-                            callback(source)?;
+                            callback(source, *inner_token)?;
                             reset_timer(timer_source)?;
                         }
                     } else {
@@ -144,7 +103,7 @@ impl<T: AsRawFd + for<'a> Socket<'a, T> + 'static> EventLoopTrait<T> for LinuxEv
         callback: F,
     ) -> Result<Token, CommonError>
     where
-        F: FnMut(&mut T) -> Result<i32, CommonError> + 'static,
+        F: FnMut(&mut T, Token) -> Result<i32, CommonError> + 'static,
     {
         let timer_fd = unsafe {
             let fd = libc::timerfd_create(libc::CLOCK_REALTIME, libc::TFD_NONBLOCK);
@@ -183,6 +142,26 @@ impl<T: AsRawFd + for<'a> Socket<'a, T> + 'static> EventLoopTrait<T> for LinuxEv
             .register(&mut timer_source, mio_token, Interest::READABLE)?;
 
         Ok(new_token)
+    }
+
+    fn register_event_source<F>(
+        &mut self,
+        event_source: T,
+        callback: F,
+    ) -> Result<Token, CommonError>
+    where
+        F: FnMut(&mut T, Token) -> Result<i32, CommonError> + 'static,
+    {
+        let binding = &event_source.as_raw_fd();
+        let mut source = SourceFd(binding);
+        let generate_token = self.generate_token();
+        let token = mio::Token(generate_token.0);
+        self.poll
+            .registry()
+            .register(&mut source, token, Interest::READABLE)?;
+        self.sources
+            .insert(generate_token, (event_source, Box::new(callback)));
+        Ok(generate_token)
     }
 }
 

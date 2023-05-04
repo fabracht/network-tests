@@ -2,12 +2,9 @@ use crate::{error::CommonError, socket::Socket};
 use core::time::Duration;
 use std::os::fd::{AsRawFd, RawFd};
 
-pub type Sources<T> = (T, Box<dyn FnMut(&mut T) -> Result<i32, CommonError>>);
-pub type TimedSources<T> = (
-    RawFd,
-    Token,
-    Box<dyn FnMut(&mut T) -> Result<i32, CommonError>>,
-);
+pub type CallBack<T> = Box<dyn FnMut(&mut T, Token) -> Result<i32, CommonError>>;
+pub type Source<T> = (T, CallBack<T>);
+pub type TimedSource<T> = (RawFd, Token, CallBack<T>);
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Token(pub usize);
@@ -50,7 +47,7 @@ pub trait EventLoopTrait<T: AsRawFd + for<'a> Socket<'a, T>> {
         callback: F,
     ) -> Result<Token, CommonError>
     where
-        F: FnMut(&mut T) -> Result<i32, CommonError> + 'static;
+        F: FnMut(&mut T, Token) -> Result<i32, CommonError> + 'static;
     fn run(&mut self) -> Result<(), CommonError>;
     fn add_duration(&mut self, time_spec: &Itimerspec) -> Result<Token, CommonError>;
     fn add_timer<F>(
@@ -60,7 +57,7 @@ pub trait EventLoopTrait<T: AsRawFd + for<'a> Socket<'a, T>> {
         callback: F,
     ) -> Result<Token, CommonError>
     where
-        F: FnMut(&mut T) -> Result<i32, CommonError> + 'static;
+        F: FnMut(&mut T, Token) -> Result<i32, CommonError> + 'static;
 }
 
 #[cfg(target_os = "linux")]

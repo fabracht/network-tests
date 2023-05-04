@@ -7,7 +7,7 @@ use common::{
     host::Host,
     session::Session,
     socket::{set_timestamping_options, Socket, TimestampedUdpSocket},
-    statistics::OrderStatisticsTree,
+    stats::statistics::OrderStatisticsTree,
     time::{DateTime, NtpTimestamp},
     Strategy,
 };
@@ -206,7 +206,7 @@ fn create_tx_callback(
     tx_sessions: Rc<RefCell<Vec<Session>>>,
     padding: usize,
 ) -> Result<usize, CommonError> {
-    let _tx_token = event_loop.add_timer(&timer_spec, &rx_token, move |inner_socket| {
+    let _tx_token = event_loop.add_timer(&timer_spec, &rx_token, move |inner_socket, _| {
         let mut received_bytes = vec![];
         let mut timestamps = vec![];
 
@@ -251,7 +251,7 @@ fn create_rx_callback(
     my_socket: TimestampedUdpSocket,
     rx_sessions: Rc<RefCell<Vec<Session>>>,
 ) -> Result<Token, CommonError> {
-    let rx_token = event_loop.register_event_source(my_socket, move |inner_socket| {
+    let rx_token = event_loop.register_event_source(my_socket, move |inner_socket, _| {
         let buffer = &mut [0; 1024];
         let (result, socket_address, timestamp) = inner_socket.receive_from(buffer)?;
         log::debug!("Received {} bytes from {}", result, socket_address);

@@ -14,6 +14,7 @@ pub enum CommonError {
     Dns(String),
     KeventRegistrationError(std::io::Error), // Added new error variant
     ValidationError(validator::ValidationErrors),
+    SendError(String),
 }
 
 impl Display for CommonError {
@@ -31,6 +32,9 @@ impl Display for CommonError {
             }
             CommonError::ValidationError(e) => {
                 write!(f, "Failed to validate: {}", e)
+            }
+            CommonError::SendError(e) => {
+                write!(f, "Failed to send: {}", e)
             }
         }
     }

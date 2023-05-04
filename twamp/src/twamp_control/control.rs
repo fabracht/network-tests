@@ -1,27 +1,27 @@
 #[cfg(target_os = "linux")]
 use common::epoll_loop::LinuxEventLoop as EventLoop;
 use message_macro::BeBytes;
-use std::os::fd::{AsRawFd, IntoRawFd};
+use std::{cell::RefCell, os::fd::IntoRawFd, rc::Rc};
 
 use common::{
     error::CommonError, event_loop::EventLoopTrait, socket::Socket,
     tcp_socket::TimestampedTcpSocket, Strategy,
 };
 
-use crate::{common::ServerGreeting, twamp_light_sender::result::TwampResult};
+use crate::twamp_light_sender::result::TwampResult;
 
 use super::{control_session::ControlSession, Configuration};
 
-pub struct Control<'a> {
+pub struct Control {
     configuration: Configuration,
-    control_sessions: Vec<ControlSession<'a>>,
+    control_sessions: Rc<RefCell<Vec<ControlSession>>>,
 }
 
-impl<'a> Control<'a> {
+impl Control {
     pub fn new(configuration: Configuration) -> Self {
         Self {
             configuration,
-            control_sessions: Vec::new(),
+            control_sessions: Rc::new(RefCell::new(Vec::new())),
         }
     }
 }
@@ -31,7 +31,7 @@ struct TestMessage {
     variant: Vec<u8>,
 }
 
-impl<'a> Strategy<TwampResult, CommonError> for Control<'a> {
+impl Strategy<TwampResult, CommonError> for Control {
     fn execute(&mut self) -> std::result::Result<TwampResult, CommonError> {
         // Create the TcpSocket
         let listener = mio::net::TcpListener::bind(self.configuration.source_ip_address.parse()?)?;
@@ -50,41 +50,43 @@ impl<'a> Strategy<TwampResult, CommonError> for Control<'a> {
 
         let event_sender = event_loop.get_communication_channel();
         // Register the socket
+        let control_sessions = self.control_sessions.clone();
 
-        let _accept_token = event_loop.register_event_source(socket, move |socket| {
-            let (_timestamped_socket, socket_address) = socket.accept()?;
-            let server_greeting = ServerGreeting::new([3; 12], 3, [1; 16], [1; 16], 3, [10; 12])?;
-
-            log::info!("Sending server greeting");
-            _timestamped_socket.send(server_greeting)?;
-            // log::info!("Sending test message");
-            // _timestamped_socket.send(test_message)?;
-
+        // Accept incoming connections
+        let accept_token = event_loop.register_event_source(socket, move |socket, token| {
+            let cs = control_sessions.clone();
+            let (mut timestamped_socket, socket_address) = socket.accept()?;
             log::info!("Accepted connection from {}", socket_address);
+            log::info!("Internal token: {:?}", token);
+            let mut control_session = ControlSession::new(1, 1);
+            control_session.transition(&mut timestamped_socket);
+            cs.borrow_mut().push(control_session);
+
+            // Register client socket
             let _ = event_sender.send((
-                _timestamped_socket,
-                Box::new(move |socket| {
-                    let control_session = ControlSession::new(socket, 1, 1);
+                timestamped_socket,
+                Box::new(move |socket, token| {
                     let buffer = &mut [0; 1 << 16];
 
                     let result = socket.receive(buffer)?;
                     socket.send(TestMessage {
                         variant: buffer[..result.0].to_vec(),
                     })?;
-                    log::info!(
-                        "Received {} bytes, at {:?} that says {}",
+                    log::error!(
+                        "Received {} bytes, at {:?} that says {} with token {:?}",
                         result.0,
                         result.1,
-                        std::str::from_utf8(buffer).unwrap()
+                        std::str::from_utf8(buffer).unwrap(),
+                        token
                     );
                     Ok(0)
                 }),
             ));
-            log::warn!("Sent message to received socket");
+            // let accepted_token = token_rx.try_recv();
 
-            log::info!("Sent fd ");
             Ok(0)
         })?;
+        log::warn!("Registered new tcp socket with token {:?}", accept_token);
 
         event_loop.run()?;
         Ok(TwampResult {

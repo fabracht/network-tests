@@ -26,6 +26,18 @@ impl Node {
         self.height
     }
 
+    pub fn left(&self) -> Option<&Node> {
+        self.left.as_ref().map(|n| n.as_ref())
+    }
+
+    pub fn right(&self) -> Option<&Node> {
+        self.right.as_ref().map(|n| n.as_ref())
+    }
+
+    pub fn value(&self) -> f64 {
+        self.value
+    }
+
     fn update_height(&mut self) {
         self.height = 1 + std::cmp::max(
             self.left.as_ref().map_or(0, |node| node.height()),
@@ -53,6 +65,10 @@ impl Default for OrderStatisticsTree {
 impl OrderStatisticsTree {
     pub fn new() -> OrderStatisticsTree {
         OrderStatisticsTree { root: None }
+    }
+
+    pub fn root(&self) -> Option<&Node> {
+        self.root.as_ref().map(|n| n.as_ref())
     }
 
     fn size(&self) -> usize {

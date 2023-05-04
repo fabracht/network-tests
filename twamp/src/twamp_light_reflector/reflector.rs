@@ -60,7 +60,7 @@ impl Strategy<TwampResult, CommonError> for Reflector {
 
         // Creates the event loop with a default socket
         let mut event_loop = EventLoop::new(1024)?;
-        let _rx_token = event_loop.register_event_source(my_socket, move |inner_socket| {
+        let _rx_token = event_loop.register_event_source(my_socket, move |inner_socket, _| {
             let mut sessions: Vec<Session> = Vec::new();
             let buffer = &mut [0; 1 << 16];
             let (result, socket_address, timestamp) = inner_socket.receive_from(buffer)?;

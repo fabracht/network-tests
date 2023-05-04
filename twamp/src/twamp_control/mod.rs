@@ -1,4 +1,3 @@
-use common::host::Host;
 use serde::{Deserialize, Serialize};
 use validator::Validate;
 
