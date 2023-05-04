@@ -7,7 +7,7 @@ use common::{
     host::Host,
     session::Session,
     socket::{set_timestamping_options, Socket, TimestampedUdpSocket},
-    stats::statistics::OrderStatisticsTree,
+    stats::{offset_estimator::estimate, statistics::OrderStatisticsTree},
     time::{DateTime, NtpTimestamp},
     Strategy,
 };
@@ -153,7 +153,32 @@ fn calculate_session_results(rc_sessions: Rc<RefCell<Vec<Session>>>) -> Vec<Sess
                     .iter()
                     .flat_map(|packet| packet.calculate_rpd().map(|rpd| rpd.as_nanos() as u32)),
             );
+            let forward_owd: Vec<f64> = f_owd_tree
+                .iter(common::stats::tree_iterator::TraversalOrder::Inorder)
+                .map(|node| node.value())
+                .collect();
+            let backward_owd: Vec<f64> = f_owd_tree
+                .iter(common::stats::tree_iterator::TraversalOrder::Inorder)
+                .map(|node| node.value())
+                .collect();
 
+            let mut f_offset = 0.0;
+            let mut b_offset = 0.0;
+            for slice in forward_owd.chunks(5) {
+                f_offset += estimate(slice);
+            }
+            for slice in backward_owd.chunks(5) {
+                b_offset += estimate(slice);
+            }
+
+            f_offset /= forward_owd.len() as f64;
+            b_offset /= backward_owd.len() as f64;
+
+            let gamlr_offset = if forward_owd.len() >= 5 {
+                Some((f_offset - b_offset) / 2.0)
+            } else {
+                None
+            };
             let network_results = NetworkStatistics {
                 avg_rtt: rtt_tree.mean(),
                 min_rtt: rtt_tree.min().unwrap_or_default(),
@@ -187,6 +212,7 @@ fn calculate_session_results(rc_sessions: Rc<RefCell<Vec<Session>>>) -> Vec<Sess
                 backward_loss,
                 total_loss,
                 total_packets,
+                gamlr_offset,
             };
 
             SessionResult {

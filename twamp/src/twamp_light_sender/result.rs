@@ -67,6 +67,11 @@ pub struct NetworkStatistics {
     pub backward_loss: u32,
     pub total_loss: u32,
     pub total_packets: usize,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "round_option_f64_with_precision"
+    )]
+    pub gamlr_offset: Option<f64>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -86,6 +91,14 @@ where
     let factor = 10f64.powi(precision);
     let rounded = (num * factor).round() / factor;
     serializer.serialize_f64(rounded)
+}
+
+fn round_option_f64_with_precision<S>(num: &Option<f64>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    let num = num.unwrap_or_default();
+    round_f64_with_precision(&num, serializer)
 }
 
 // #[derive(Debug, Serialize, Deserialize, Clone)]

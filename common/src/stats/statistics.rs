@@ -1,3 +1,5 @@
+use super::tree_iterator::{TraversalOrder, TreeIterator};
+
 #[derive(Debug, Clone)]
 pub struct Node {
     value: f64,
@@ -62,6 +64,25 @@ impl Default for OrderStatisticsTree {
     }
 }
 
+impl<'a> FromIterator<&'a Node> for OrderStatisticsTree {
+    fn from_iter<I: IntoIterator<Item = &'a Node>>(iter: I) -> Self {
+        let mut tree = Self::new();
+        for node in iter {
+            tree.insert(node.value());
+        }
+        tree
+    }
+}
+
+impl<'a> IntoIterator for &'a OrderStatisticsTree {
+    type Item = &'a Node;
+    type IntoIter = TreeIterator<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter(TraversalOrder::Inorder)
+    }
+}
+
 impl OrderStatisticsTree {
     pub fn new() -> OrderStatisticsTree {
         OrderStatisticsTree { root: None }
@@ -76,6 +97,10 @@ impl OrderStatisticsTree {
             Some(ref node) => node.size(),
             None => 0,
         }
+    }
+
+    pub fn iter<'a>(&'a self, traversal_order: TraversalOrder) -> TreeIterator<'a> {
+        TreeIterator::new(self, traversal_order)
     }
 
     pub fn insert(&mut self, value: f64) {

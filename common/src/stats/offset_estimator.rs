@@ -187,7 +187,7 @@ pub fn estimate(time_values: &[f64]) -> f64 {
     let mut random_sorted = random_values;
     // sort in increasing order
     random_sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    
+
     estimate_offset(&sorted, &random_sorted)
 }
 
@@ -230,7 +230,6 @@ fn estimate_offset(x_sort: &[f64], y: &[f64]) -> f64 {
     };
 
     // Find the point where the regression line crosses the x-axis (y = 0)
-    
 
     // Return the estimated offset (x_cross).
     -gamma / beta
