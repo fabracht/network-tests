@@ -3,16 +3,12 @@
     {
       "ip": "127.0.0.1",
       "port": 45571
-    },
-    {
-      "ip": "127.0.0.1",
-      "port": 45573
     }
   ],
   "mode": "LIGHT_SENDER",
   "source_ip_address": "0.0.0.0:45572",
   "collection_period": 2,
-  "packet_interval": 400,
+  "packet_interval": 300,
   "padding": 0,
   "ref_wait": 1
 }

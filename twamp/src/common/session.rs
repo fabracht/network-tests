@@ -61,10 +61,10 @@ impl Session {
         self.seq_number.fetch_add(1, Ordering::Relaxed);
     }
 
-    pub fn get_latest_result(&self) -> TimestampsResult {
-        let results = self.results.write().unwrap();
-        let last_result = results.last().unwrap();
-        TimestampsResult {
+    pub fn get_latest_result(&self) -> Option<TimestampsResult> {
+        let results = self.results.write().ok()?;
+        let last_result = results.last()?;
+        Some(TimestampsResult {
             session: SessionPackets {
                 address: self.socket_address,
                 packets: Some(vec![PacketResults {
@@ -77,7 +77,7 @@ impl Session {
                 }]),
             },
             error: None,
-        }
+        })
     }
 
     pub fn analyze_packet_loss<'a>(&'_ self) -> Result<(u32, u32, u32), CommonError> {

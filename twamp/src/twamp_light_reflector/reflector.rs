@@ -5,11 +5,11 @@ use common::epoll_loop::LinuxEventLoop as EventLoop;
 use common::kevent_loop::MacOSEventLoop as EventLoop;
 use message_macro::BeBytes;
 
-use std::{os::fd::IntoRawFd, sync::atomic::Ordering};
+use std::{cell::RefCell, os::fd::IntoRawFd, rc::Rc, sync::atomic::Ordering, time::Duration};
 
 use ::common::{error::CommonError, socket::Socket, Strategy, TestResult};
 use common::{
-    event_loop::EventLoopTrait,
+    event_loop::{EventLoopTrait, Itimerspec},
     time::{DateTime, NtpTimestamp},
     udp_socket::{set_timestamping_options, TimestampedUdpSocket},
 };
@@ -56,14 +56,17 @@ impl Strategy<TwampResult, CommonError> for Reflector {
 
         // Creates the event loop with a default socket
         let mut event_loop = EventLoop::new(1024)?;
-        let _rx_token = event_loop.register_event_source(my_socket, move |inner_socket, _| {
-            let mut sessions: Vec<Session> = Vec::new();
+        let ref_wait = self.configuration.ref_wait;
+        let sessions: Rc<RefCell<Vec<Session>>> = Rc::new(RefCell::new(Vec::new()));
+        let sessions_clone = sessions.clone();
+
+        let rx_token = event_loop.register_event_source(my_socket, move |inner_socket, _| {
             let buffer = &mut [0; 1 << 16];
             let (result, socket_address, timestamp) = inner_socket.receive_from(buffer)?;
             let (twamp_test_message, _bytes_written): (SenderMessage, usize) =
                 SenderMessage::try_from_be_bytes(&buffer[..result])?;
-
-            let session_option = sessions
+            let mut borrowed_sessions = sessions.borrow_mut();
+            let session_option = borrowed_sessions
                 .iter()
                 .find(|session| session.socket_address == socket_address);
 
@@ -107,9 +110,34 @@ impl Strategy<TwampResult, CommonError> for Reflector {
                 // Add message results to session
                 session.add_to_sent(Box::new(reflected_message));
                 // Store session
-                sessions.push(session);
+                borrowed_sessions.push(session);
             }
             Ok(result as i32)
+        })?;
+        // Add timed event that checks if session should be removed
+        // It checks every 1s, which is the minimum value for the ref_wait value
+        let timer_spec = Itimerspec {
+            it_interval: Duration::from_secs(1),
+            it_value: Duration::from_secs(1),
+        };
+        let _tx_token = event_loop.add_timer(&timer_spec, &rx_token, move |_inner_socket, _| {
+            let mut borrowed_sessions = sessions_clone.borrow_mut();
+            borrowed_sessions.retain(|session| {
+                if let Some(session) = session.get_latest_result() {
+                    if let Some(packet_results) = session.session.packets {
+                        let now = DateTime::utc_now();
+                        let last_sent = packet_results.last().unwrap().t2.unwrap_or(now);
+
+                        let diff = now - last_sent;
+                        if diff > Duration::from_secs(ref_wait) {
+                            log::info!("Diff {:?}, ref_wait: {}, now: {:?}", diff, ref_wait, now);
+                            return false;
+                        }
+                    }
+                }
+                true
+            });
+            Ok(0)
         })?;
         // Run the event loop
         event_loop.run()?;
