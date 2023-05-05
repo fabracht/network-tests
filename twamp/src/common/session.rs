@@ -131,6 +131,9 @@ impl Session {
                             backward_loss += 1;
                         }
                     }
+                } else {
+                    // Default assumption: Forward Loss for the first lost packet
+                    forward_loss += 1;
                 }
             } else {
                 last_successful_sender_seq = Some(current.sender_seq);
