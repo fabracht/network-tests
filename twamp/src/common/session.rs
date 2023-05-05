@@ -80,6 +80,30 @@ impl Session {
         })
     }
 
+    // pub fn analyze_packet_loss<'a>(&'_ self) -> Result<(u32, u32, u32), CommonError> {
+    //     let read_lock = self.results.read().map_err(|_| CommonError::Lock)?;
+    //     let mut forward_loss = 0;
+    //     let mut backward_loss = 0;
+    //     let mut total_loss = 0;
+    //     let mut results: Vec<PacketResults> = read_lock.iter().cloned().collect();
+
+    //     results.sort_unstable_by_key(|p| p.sender_seq);
+
+    //     for i in 0..results.len() {
+    //         let current = &results[i];
+    //         if current.reflector_seq.is_none() {
+    //             total_loss += 1;
+    //             if i + 1 < results.len() && results[i + 1].reflector_seq == Some(current.sender_seq)
+    //             {
+    //                 forward_loss += 1;
+    //             } else {
+    //                 backward_loss += 1;
+    //             }
+    //         }
+    //     }
+
+    //     Ok((forward_loss, backward_loss, total_loss))
+    // }
     pub fn analyze_packet_loss<'a>(&'_ self) -> Result<(u32, u32, u32), CommonError> {
         let read_lock = self.results.read().map_err(|_| CommonError::Lock)?;
         let mut forward_loss = 0;
@@ -89,16 +113,28 @@ impl Session {
 
         results.sort_unstable_by_key(|p| p.sender_seq);
 
-        for i in 0..results.len() {
-            let current = &results[i];
+        let mut last_successful_sender_seq: Option<u32> = None;
+        let mut last_successful_reflector_seq: Option<u32> = None;
+
+        for current in results {
             if current.reflector_seq.is_none() {
                 total_loss += 1;
-                if i + 1 < results.len() && results[i + 1].reflector_seq == Some(current.sender_seq)
-                {
-                    forward_loss += 1;
-                } else {
-                    backward_loss += 1;
+
+                if let Some(last_sender_seq) = last_successful_sender_seq {
+                    if let Some(last_reflector_seq) = last_successful_reflector_seq {
+                        let sender_seq_diff = current.sender_seq - last_sender_seq;
+                        let reflector_seq_diff = current.sender_seq - last_reflector_seq;
+
+                        if reflector_seq_diff == sender_seq_diff {
+                            forward_loss += 1;
+                        } else {
+                            backward_loss += 1;
+                        }
+                    }
                 }
+            } else {
+                last_successful_sender_seq = Some(current.sender_seq);
+                last_successful_reflector_seq = current.reflector_seq;
             }
         }
 
