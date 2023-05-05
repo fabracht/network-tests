@@ -106,8 +106,8 @@ impl Session {
     // }
     pub fn analyze_packet_loss<'a>(&'_ self) -> Result<(u32, u32, u32), CommonError> {
         let read_lock = self.results.read().map_err(|_| CommonError::Lock)?;
-        let mut forward_loss = 0;
-        let mut backward_loss = 0;
+        let mut forward_loss: i32 = 0;
+        let backward_loss;
         let mut total_loss = 0;
         let mut results: Vec<PacketResults> = read_lock.iter().cloned().collect();
 
@@ -126,28 +126,30 @@ impl Session {
         }
 
         for current in results.iter().skip(1) {
-            if let Some(reflector_seq) = current.reflector_seq {
+            if current.reflector_seq.is_none() {
+                total_loss += 1;
+            } else {
                 if let Some(last_sender_seq) = last_successful_sender_seq {
                     if let Some(last_reflector_seq) = last_successful_reflector_seq {
-                        let sender_seq_diff = current.sender_seq - last_sender_seq;
-                        let reflector_seq_diff = current.sender_seq - last_reflector_seq;
+                        let current_reflector_seq = current.reflector_seq.unwrap_or(0);
+                        let delta = ((current.sender_seq as i32 - last_sender_seq as i32)
+                            - (current_reflector_seq as i32 - last_reflector_seq as i32))
+                            as i32;
 
-                        let lost_packets = sender_seq_diff - reflector_seq_diff - 1;
-                        if lost_packets > 0 {
-                            total_loss += lost_packets;
-                            forward_loss += lost_packets;
-                        } else {
-                            backward_loss -= lost_packets;
+                        if delta >= 0 {
+                            forward_loss += delta;
                         }
                     }
                 }
 
                 last_successful_sender_seq = Some(current.sender_seq);
-                last_successful_reflector_seq = Some(reflector_seq);
+                last_successful_reflector_seq = current.reflector_seq;
             }
         }
 
-        Ok((forward_loss, backward_loss, total_loss))
+        backward_loss = total_loss - forward_loss;
+
+        Ok((forward_loss as u32, backward_loss as u32, total_loss as u32))
     }
 
     pub fn calculate_gamlr_offset(&self) -> Option<f64> {
