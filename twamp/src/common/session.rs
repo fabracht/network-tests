@@ -116,28 +116,34 @@ impl Session {
         let mut last_successful_sender_seq: Option<u32> = None;
         let mut last_successful_reflector_seq: Option<u32> = None;
 
-        for current in results {
-            if current.reflector_seq.is_none() {
-                total_loss += 1;
+        // Check if the first packet is lost and increment the total_loss counter accordingly
+        if results
+            .get(0)
+            .map(|p| p.reflector_seq.is_none())
+            .unwrap_or(false)
+        {
+            total_loss += 1;
+        }
 
+        for current in results.iter().skip(1) {
+            if let Some(reflector_seq) = current.reflector_seq {
                 if let Some(last_sender_seq) = last_successful_sender_seq {
                     if let Some(last_reflector_seq) = last_successful_reflector_seq {
                         let sender_seq_diff = current.sender_seq - last_sender_seq;
                         let reflector_seq_diff = current.sender_seq - last_reflector_seq;
 
-                        if reflector_seq_diff == sender_seq_diff {
-                            forward_loss += 1;
+                        let lost_packets = sender_seq_diff - reflector_seq_diff - 1;
+                        if lost_packets > 0 {
+                            total_loss += lost_packets;
+                            forward_loss += lost_packets;
                         } else {
-                            backward_loss += 1;
+                            backward_loss -= lost_packets;
                         }
-                    } else {
-                        // Default assumption: Forward Loss for the first lost packet
-                        forward_loss += 1;
                     }
                 }
-            } else {
+
                 last_successful_sender_seq = Some(current.sender_seq);
-                last_successful_reflector_seq = current.reflector_seq;
+                last_successful_reflector_seq = Some(reflector_seq);
             }
         }
 
