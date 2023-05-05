@@ -129,8 +129,8 @@ impl Strategy<TwampResult, CommonError> for Reflector {
                         let last_sent = packet_results.last().unwrap().t2.unwrap_or(now);
 
                         let diff = now - last_sent;
+                        log::debug!("Diff {:?}, ref_wait: {}, now: {:?}", diff, ref_wait, now);
                         if diff > Duration::from_secs(ref_wait) {
-                            log::info!("Diff {:?}, ref_wait: {}, now: {:?}", diff, ref_wait, now);
                             return false;
                         }
                     }
