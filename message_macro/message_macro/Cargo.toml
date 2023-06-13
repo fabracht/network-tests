@@ -5,7 +5,6 @@ edition = "2021"
 description = "A macro to generate/parse binary representation of messages"
 license = "MIT"
 repository = "https://github.com/fabracht/network-tools"
-publish = false
 
 [[bin]]
 name = "macro_test"
