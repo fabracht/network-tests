@@ -89,7 +89,7 @@ impl Strategy<TwampResult, crate::CommonError> for TwampLight {
         // This configures the tx socket timer.
         let timer_spec = Itimerspec {
             it_interval: self.packet_interval,
-            it_value: Duration::from_nanos(1),
+            it_value: Duration::from_millis(23),
         };
 
         // Create the Tx timed event to send twamp messages
@@ -286,11 +286,7 @@ fn create_tx_correct_callback(
                 .skip(i)
                 .step_by(length)
                 .map(|date_time| date_time.to_owned());
-            // log::warn!(
-            //     "Timestamps: {:?}, Length: {}",
-            //     session_timestamps,
-            //     session_timestamps.len()
-            // );
+
             tx_sessions.borrow_mut()[i].update_tx_timestamps(session_timestamps)?;
         }
         Ok(0)

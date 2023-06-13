@@ -88,24 +88,14 @@ impl Session {
         mut timestamps: impl Iterator<Item = DateTime>,
     ) -> Result<(), CommonError> {
         let mut results = self.results.write()?;
-        // let mut timestamps = timestamps.iter();
-
         for result in results.iter_mut().skip(self.last_updated) {
             if let Some(timestamp) = timestamps.next() {
                 let delta = timestamp - result.t1;
-                if delta > std::time::Duration::from_micros(10) {
-                    log::error!("Delta: {:?}", delta);
-                } else {
-                    log::warn!("Delta: {:?}", delta);
-                }
+                log::trace!("Delta: {:?}", delta);
+
                 result.t1 = timestamp;
                 self.last_updated += 1;
-            } else {
-                // return Err(CommonError::IterError(
-                //     "Failed to retrieve next tx Timestamp".to_string(),
-                // ));
             }
-            // log::info!("Last updated {}", self.last_updated);
         }
 
         Ok(())

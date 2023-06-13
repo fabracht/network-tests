@@ -78,29 +78,29 @@ impl<T: AsRawFd + for<'a> Socket<'a, T> + 'static> EventLoopTrait<T> for LinuxEv
             for event in self.events.iter() {
                 if event.is_readable() {
                     let token = event.token();
-                    log::error!("Event token {:?}", token);
+                    log::trace!("Event token {:?}", token);
                     let generate_token = Token(token.0);
-                    if let Some((source, callback)) = self.sources.get_mut(&generate_token) {
+                    let sources = self.sources.get_mut(&generate_token);
+                    let timed_sources = self.timed_sources.get_mut(&generate_token);
+                    if let Some((source, callback)) = sources {
                         callback(source, generate_token)?;
-                    } else if let Some((timer_source, inner_token, callback)) =
-                        self.timed_sources.get_mut(&generate_token)
-                    {
+                    } else if let Some((timer_source, inner_token, callback)) = timed_sources {
                         if let Some((source, _)) = self.sources.get_mut(inner_token) {
                             callback(source, *inner_token)?;
                             reset_timer(timer_source)?;
                         }
-                    // else only triggers on duration
+                    // else only triggers on duration and overtime
                     } else {
                         if self.overtime.is_none() {
-                            log::error!("No overtime");
+                            log::debug!("No overtime");
                             break 'outer;
                         }
                         self.timed_sources.iter().for_each(|(token, _)| {
                             let _ = self.unregister_timed_event_source(Token(token.0));
                         });
-                        log::error!("Entering Overtime {:?}", self.overtime);
+                        log::debug!("Entering Overtime {:?}", self.overtime);
                         let _ = self.add_duration(&self.overtime.unwrap_or(Itimerspec {
-                            it_interval: Duration::from_millis(100),
+                            it_interval: Duration::from_millis(500),
                             it_value: Duration::ZERO,
                         }))?;
 
