@@ -1,4 +1,4 @@
-use libc::{fcntl, iovec, msghdr, recvfrom, sa_family_t, sendmsg, sockaddr_in};
+use libc::{fcntl, iovec, msghdr, recvfrom, sa_family_t, sendmsg, sockaddr_in, timespec};
 use message_macro::BeBytes;
 
 use std::os::fd::{AsRawFd, RawFd};
@@ -88,6 +88,86 @@ impl TimestampedUdpSocket {
         };
         log::debug!("setsockopt:level {}, name {}, res {:?}", level, name, _res);
         Ok(())
+    }
+
+    pub fn receive_errors(&mut self) -> Result<Vec<(usize, SocketAddr, DateTime)>, CommonError> {
+        const MAX_MSG: usize = 10;
+        let mut timestamps: Vec<(usize, SocketAddr, DateTime)> = Vec::new();
+        let mut msgvec: [libc::mmsghdr; MAX_MSG] = unsafe { std::mem::zeroed() };
+        let mut msg_buffers: [[u8; 4096]; MAX_MSG] = unsafe { std::mem::zeroed() };
+
+        for (msg, buffer) in msgvec.iter_mut().zip(&mut msg_buffers) {
+            let mut iov = iovec {
+                iov_base: buffer.as_mut_ptr() as *mut libc::c_void,
+                iov_len: buffer.len(),
+            };
+            let mut sockaddr = sockaddr_in {
+                sin_family: libc::AF_INET as u16,
+                sin_port: 0u16.to_be(),
+                sin_addr: libc::in_addr {
+                    s_addr: 0u32.to_be(),
+                },
+                sin_zero: [0; 8],
+            };
+            msg.msg_hdr = msghdr {
+                msg_name: &mut sockaddr as *mut _ as *mut libc::c_void,
+                msg_namelen: std::mem::size_of_val(&sockaddr) as u32,
+                msg_iov: &mut iov as *mut iovec,
+                msg_iovlen: 1,
+                msg_control: buffer.as_mut_ptr() as *mut libc::c_void,
+                msg_controllen: buffer.len(),
+                msg_flags: 0,
+            };
+        }
+
+        let res = unsafe {
+            libc::recvmmsg(
+                self.as_raw_fd(),
+                msgvec.as_mut_ptr(),
+                msgvec.len() as u32,
+                libc::MSG_ERRQUEUE,
+                0 as *mut timespec,
+            )
+        };
+
+        if res >= 0 {
+            for msg in &msgvec {
+                let mut cmsg = unsafe { libc::CMSG_FIRSTHDR(&msg.msg_hdr) };
+                while !cmsg.is_null() {
+                    unsafe {
+                        if (*cmsg).cmsg_level == libc::SOL_SOCKET
+                            && (*cmsg).cmsg_type == libc::SCM_TIMESTAMPING
+                        {
+                            let data = libc::CMSG_DATA(cmsg);
+                            let ts = (data as *const ScmTimestamping).as_ref().unwrap();
+                            let timestamp = DateTime::from_timespec(ts.ts_realtime);
+
+                            let sockaddr = &mut *(msg.msg_hdr.msg_name as *mut sockaddr_in);
+                            let ip_bytes = sockaddr.sin_addr.s_addr.to_be_bytes();
+                            let socket_addr = SocketAddr::new(
+                                IpAddr::V4(Ipv4Addr::new(
+                                    ip_bytes[3],
+                                    ip_bytes[2],
+                                    ip_bytes[1],
+                                    ip_bytes[0],
+                                )),
+                                sockaddr.sin_port.to_be(),
+                            );
+
+                            timestamps.push((msg.msg_len as usize, socket_addr, timestamp));
+                        }
+                        cmsg = libc::CMSG_NXTHDR(&msg.msg_hdr, cmsg);
+                    }
+                }
+            }
+            Ok(timestamps)
+        } else {
+            let error = format!("Failed to get error messages: {}", res);
+            Err(CommonError::Io(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                error,
+            )))
+        }
     }
 
     pub fn receive_error(&mut self) -> Result<(usize, SocketAddr, DateTime), CommonError> {

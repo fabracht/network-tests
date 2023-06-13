@@ -149,25 +149,16 @@ impl Session {
         Ok((forward_loss as u32, backward_loss as u32, total_loss as u32))
     }
 
-    pub fn calculate_gamlr_offset(&self) -> Option<f64> {
+    pub fn calculate_gamlr_offset(
+        &self,
+        f_owd_tree: &OrderStatisticsTree,
+        b_owd_tree: &OrderStatisticsTree,
+    ) -> Option<f64> {
         if let Ok(results) = self.results.read() {
             if results.is_empty() || results.len() < 5 {
                 return None;
             }
-            let mut f_owd_tree = OrderStatisticsTree::new();
-            let mut b_owd_tree = OrderStatisticsTree::new();
-            let packets = self.results.read().unwrap().clone();
 
-            f_owd_tree.insert_all(packets.iter().flat_map(|packet| {
-                packet
-                    .calculate_owd_forward()
-                    .map(|owd| owd.as_nanos() as u32)
-            }));
-            b_owd_tree.insert_all(packets.iter().flat_map(|packet| {
-                packet
-                    .calculate_owd_backward()
-                    .map(|owd| owd.as_nanos() as u32)
-            }));
             let forward_owd: Vec<f64> = f_owd_tree
                 .iter(common::stats::tree_iterator::TraversalOrder::Inorder)
                 .map(|node| node.value())

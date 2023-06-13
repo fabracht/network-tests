@@ -1,29 +1,19 @@
+use std::env;
+use std::fs::File;
+use std::io::Read;
+
 use crate::twamp::Twamp;
 use crate::twamp_light_sender::result::TwampResult;
 
 use ::common::error::CommonError;
 use twamp::TwampConfiguration;
 use validator::Validate;
+
 mod common;
 mod twamp;
 mod twamp_control;
 mod twamp_light_reflector;
 mod twamp_light_sender;
-
-use clap::Parser;
-use std::fs::File;
-use std::io::Read;
-
-#[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
-struct Cli {
-    #[arg(
-        short,
-        long,
-        default_value_t = String::from("twamp/configurations/receiver_config.json")
-    )]
-    config_file: String,
-}
 
 #[derive(Debug)]
 struct App {
@@ -64,9 +54,14 @@ impl App {
 fn main() {
     let _ = log4rs::init_file("twamp/log_config.yml", Default::default());
 
-    let args = Cli::parse();
+    let args: Vec<String> = env::args().collect();
+    if args.len() != 2 {
+        eprintln!("Usage: program_name config_file_path");
+        return;
+    }
 
-    let mut file = File::open(args.config_file).expect("failed to open config file");
+    let config_file = &args[1];
+    let mut file = File::open(config_file).expect("failed to open config file");
     let mut contents = String::new();
     file.read_to_string(&mut contents)
         .expect("failed to read config file");

@@ -122,10 +122,11 @@ impl Strategy<TwampResult, crate::CommonError> for TwampLight {
 
         // Add a deadline event
         let _termination_token = event_loop.add_duration(&duration_spec)?;
-
+        log::info!("Starting test");
         // Run the event loop
         event_loop.run()?;
-
+        log::info!("Test finished");
+        log::info!("Calculating results");
         let session_results = calculate_session_results(rc_sessions);
         let test_result = TwampResult {
             session_results,
@@ -137,11 +138,11 @@ impl Strategy<TwampResult, crate::CommonError> for TwampLight {
 }
 
 fn calculate_session_results(rc_sessions: Rc<RefCell<Vec<Session>>>) -> Vec<SessionResult> {
-    let session_results = rc_sessions
+    rc_sessions
         .borrow_mut()
         .iter()
         .map(|session| {
-            let packets = session.results.read().unwrap().clone();
+            let packets = session.results.read().unwrap();
             let total_packets = packets.len();
             let (forward_loss, backward_loss, total_loss) =
                 session.analyze_packet_loss().unwrap_or_default();
@@ -150,27 +151,25 @@ fn calculate_session_results(rc_sessions: Rc<RefCell<Vec<Session>>>) -> Vec<Sess
             let mut b_owd_tree = OrderStatisticsTree::new();
             let mut rpd_tree = OrderStatisticsTree::new();
 
-            rtt_tree.insert_all(
-                packets
-                    .iter()
-                    .flat_map(|packet| packet.calculate_rtt().map(|rtt| rtt.as_nanos() as u32)),
-            );
-            f_owd_tree.insert_all(packets.iter().flat_map(|packet| {
-                packet
-                    .calculate_owd_forward()
-                    .map(|owd| owd.as_nanos() as u32)
-            }));
-            b_owd_tree.insert_all(packets.iter().flat_map(|packet| {
-                packet
-                    .calculate_owd_backward()
-                    .map(|owd| owd.as_nanos() as u32)
-            }));
-            rpd_tree.insert_all(
-                packets
-                    .iter()
-                    .flat_map(|packet| packet.calculate_rpd().map(|rpd| rpd.as_nanos() as u32)),
-            );
-            let gamlr_offset = session.calculate_gamlr_offset();
+            for packet in packets.iter() {
+                if let Some(rtt) = packet.calculate_rtt() {
+                    rtt_tree.insert(rtt.as_nanos() as f64);
+                }
+
+                if let Some(owd) = packet.calculate_owd_forward() {
+                    f_owd_tree.insert(owd.as_nanos() as f64);
+                }
+
+                if let Some(owd) = packet.calculate_owd_backward() {
+                    b_owd_tree.insert(owd.as_nanos() as f64);
+                }
+
+                if let Some(rpd) = packet.calculate_rpd() {
+                    rpd_tree.insert(rpd.as_nanos() as f64);
+                }
+            }
+
+            let gamlr_offset = session.calculate_gamlr_offset(&f_owd_tree, &b_owd_tree);
 
             let network_results = NetworkStatistics {
                 avg_rtt: rtt_tree.mean(),
@@ -214,8 +213,7 @@ fn calculate_session_results(rc_sessions: Rc<RefCell<Vec<Session>>>) -> Vec<Sess
                 network_statistics: Some(network_results),
             }
         })
-        .collect::<Vec<SessionResult>>();
-    session_results
+        .collect()
 }
 
 fn create_tx_callback(
@@ -272,10 +270,15 @@ fn create_tx_correct_callback(
     rx_token: Token,
     tx_sessions: Rc<RefCell<Vec<Session>>>,
 ) -> Result<usize, CommonError> {
-    let _tx_token = event_loop.add_timer(&timer_spec, &rx_token, move |inner_socket, _| {
+    let tx_token = event_loop.add_timer(&timer_spec, &rx_token, move |inner_socket, _| {
         let mut tx_timestamps = vec![];
-        while let Ok((_res, _address, tx_timestamp)) = inner_socket.receive_error() {
-            tx_timestamps.push(tx_timestamp);
+
+        while let Ok(error_messages) = inner_socket.receive_errors() {
+            error_messages
+                .iter()
+                .for_each(|(_res, _address, tx_timestamp)| {
+                    tx_timestamps.push(tx_timestamp.to_owned());
+                });
         }
         let length = tx_sessions.borrow().len();
         // mutably iterate through the sessions. Timestamps are ordered by target and then by sequence number
@@ -291,7 +294,7 @@ fn create_tx_correct_callback(
         }
         Ok(0)
     })?;
-    Ok(5)
+    Ok(tx_token.0)
 }
 
 fn create_rx_callback(
