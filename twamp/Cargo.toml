@@ -2,8 +2,10 @@
 name = "twamp"
 version = "0.1.0"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+description = "Network-Tests TWAMP is a Rust project to support network tests used by the industry to monitor network quality and service assurance, currently implementing TWAMP (Two-Way Active Measurement Protocol) Light as per RFC 5357."
+authors = ["Fabricio Bracht <fabracht@gmail.com>"]
+license = "MIT"
+repository = "https://github.com/fabracht/network-tools"
 
 [dependencies]
 env_logger = "0.10"
