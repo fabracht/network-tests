@@ -1,5 +1,6 @@
 [package]
 name = "message_macro_derive"
+description = "A macro to generate/parse binary representation of messages"
 version = "0.1.0"
 edition = "2021"
 publish = true
