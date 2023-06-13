@@ -59,10 +59,10 @@ impl<T: AsRawFd + for<'a> Socket<'a, T> + 'static> EventLoopTrait<T> for LinuxEv
 
     fn generate_token(&self) -> Token {
         let token = Token(self.next_token.load(std::sync::atomic::Ordering::SeqCst));
-        log::info!("Token: {:?}", token);
+        log::debug!("Token: {:?}", token);
         self.next_token
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        log::info!("Token: {:?}", self.next_token);
+        log::debug!("Token: {:?}", self.next_token);
         token
     }
 
@@ -78,7 +78,7 @@ impl<T: AsRawFd + for<'a> Socket<'a, T> + 'static> EventLoopTrait<T> for LinuxEv
             for event in self.events.iter() {
                 if event.is_readable() {
                     let token = event.token();
-
+                    log::error!("Event token {:?}", token);
                     let generate_token = Token(token.0);
                     if let Some((source, callback)) = self.sources.get_mut(&generate_token) {
                         callback(source, generate_token)?;
@@ -86,22 +86,24 @@ impl<T: AsRawFd + for<'a> Socket<'a, T> + 'static> EventLoopTrait<T> for LinuxEv
                         self.timed_sources.get_mut(&generate_token)
                     {
                         if let Some((source, _)) = self.sources.get_mut(inner_token) {
-                            log::warn!("Timed event");
                             callback(source, *inner_token)?;
                             reset_timer(timer_source)?;
                         }
+                    // else only triggers on duration
                     } else {
                         if self.overtime.is_none() {
-                            log::debug!("No overtime");
+                            log::error!("No overtime");
                             break 'outer;
                         }
-                        log::debug!("Entering Overtime {:?}", self.overtime);
-
+                        self.timed_sources.iter().for_each(|(token, _)| {
+                            let _ = self.unregister_timed_event_source(Token(token.0));
+                        });
+                        log::error!("Entering Overtime {:?}", self.overtime);
                         let _ = self.add_duration(&self.overtime.unwrap_or(Itimerspec {
-                            it_interval: Duration::ZERO,
+                            it_interval: Duration::from_millis(100),
                             it_value: Duration::ZERO,
                         }))?;
-                        self.timed_sources.clear();
+
                         self.overtime = None;
                     }
                 }
@@ -197,9 +199,9 @@ impl<T: AsRawFd + for<'a> Socket<'a, T> + 'static> EventLoopTrait<T> for LinuxEv
         Ok(())
     }
 
-    fn unregister_timed_event_source(&mut self, token: Token) -> Result<(), CommonError> {
-        if let Some((timer_fd, event_token, _)) = self.timed_sources.remove(&token) {
-            // Deregister timer_fd
+    fn unregister_timed_event_source(&self, token: Token) -> Result<(), CommonError> {
+        if let Some((timer_fd, _event_token, _)) = self.timed_sources.get(&token) {
+            // Unregister timer_fd
             let mut timer_source = SourceFd(&timer_fd);
             self.poll
                 .registry()
@@ -207,9 +209,6 @@ impl<T: AsRawFd + for<'a> Socket<'a, T> + 'static> EventLoopTrait<T> for LinuxEv
                 .map_err(|e| {
                     CommonError::from(format!("Failed to deregister timed event source: {}", e))
                 })?;
-
-            // Unregister the associated event source
-            self.unregister_event_source(event_token)?;
         } else {
             return Err(CommonError::from(format!(
                 "Failed to unregister timed event source: token not found"

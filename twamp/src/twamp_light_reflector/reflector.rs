@@ -35,13 +35,9 @@ impl Reflector {
     fn create_socket(&mut self) -> Result<TimestampedUdpSocket, CommonError> {
         let socket = mio::net::UdpSocket::bind(self.configuration.source_ip_address.parse()?)?;
         let mut my_socket = TimestampedUdpSocket::new(socket.into_raw_fd());
+        my_socket.set_fcntl_options()?;
         #[cfg(target_os = "linux")]
-        my_socket.set_socket_options(libc::SOCK_NONBLOCK | libc::SOCK_CLOEXEC, None)?;
-
-        #[cfg(target_os = "macos")]
-        {
-            my_socket.set_socket_options(libc::O_NONBLOCK | libc::O_CLOEXEC, None)?;
-        }
+        my_socket.set_socket_options(libc::SOL_IP, libc::IP_RECVERR, Some(1))?;
 
         set_timestamping_options(&mut my_socket)?;
 

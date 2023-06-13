@@ -49,7 +49,7 @@ pub trait EventLoopTrait<T: AsRawFd + for<'a> Socket<'a, T>> {
     where
         F: FnMut(&mut T, Token) -> Result<i32, CommonError> + 'static;
     fn unregister_event_source(&mut self, token: Token) -> Result<(), CommonError>;
-    fn unregister_timed_event_source(&mut self, token: Token) -> Result<(), CommonError>;
+    fn unregister_timed_event_source(&self, token: Token) -> Result<(), CommonError>;
     fn run(&mut self) -> Result<(), CommonError>;
     fn add_duration(&self, time_spec: &Itimerspec) -> Result<Token, CommonError>;
     fn add_timer<F>(

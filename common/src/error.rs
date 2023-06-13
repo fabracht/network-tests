@@ -15,6 +15,7 @@ pub enum CommonError {
     KeventRegistrationError(std::io::Error), // Added new error variant
     ValidationError(validator::ValidationErrors),
     SendError(String),
+    IterError(String),
 }
 
 impl Display for CommonError {
@@ -35,6 +36,9 @@ impl Display for CommonError {
             }
             CommonError::SendError(e) => {
                 write!(f, "Failed to send: {}", e)
+            }
+            CommonError::IterError(e) => {
+                write!(f, "Failed to iterate: {}", e)
             }
         }
     }

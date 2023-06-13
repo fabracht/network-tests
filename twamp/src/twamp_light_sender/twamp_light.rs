@@ -55,13 +55,9 @@ impl TwampLight {
         let socket = mio::net::UdpSocket::bind(self.source_ip_address.parse().unwrap()).unwrap();
         let mut my_socket = TimestampedUdpSocket::new(socket.into_raw_fd());
 
+        my_socket.set_fcntl_options()?;
         #[cfg(target_os = "linux")]
-        my_socket.set_socket_options(libc::SOCK_NONBLOCK | libc::SOCK_CLOEXEC, None)?;
-
-        #[cfg(target_os = "macos")]
-        {
-            my_socket.set_socket_options(libc::O_NONBLOCK | libc::O_CLOEXEC, None)?;
-        }
+        my_socket.set_socket_options(libc::SOL_IP, libc::IP_RECVERR, Some(1))?;
 
         set_timestamping_options(&mut my_socket)?;
 
@@ -93,7 +89,7 @@ impl Strategy<TwampResult, crate::CommonError> for TwampLight {
         // This configures the tx socket timer.
         let timer_spec = Itimerspec {
             it_interval: self.packet_interval,
-            it_value: Duration::from_micros(1),
+            it_value: Duration::from_nanos(1),
         };
 
         // Create the Tx timed event to send twamp messages
@@ -105,6 +101,20 @@ impl Strategy<TwampResult, crate::CommonError> for TwampLight {
             self.padding,
         )?;
 
+        // This configures the tx timestamp correction socket timer.
+        let tx_correction_timer_spec = Itimerspec {
+            it_interval: Duration::from_millis(10),
+            it_value: Duration::from_nanos(1),
+        };
+
+        create_tx_correct_callback(
+            &mut event_loop,
+            tx_correction_timer_spec,
+            rx_token,
+            rc_sessions.clone(),
+        )?;
+
+        // Create the deadline event
         let duration_spec = Itimerspec {
             it_interval: Duration::ZERO,
             it_value: self.duration,
@@ -161,6 +171,7 @@ fn calculate_session_results(rc_sessions: Rc<RefCell<Vec<Session>>>) -> Vec<Sess
                     .flat_map(|packet| packet.calculate_rpd().map(|rpd| rpd.as_nanos() as u32)),
             );
             let gamlr_offset = session.calculate_gamlr_offset();
+
             let network_results = NetworkStatistics {
                 avg_rtt: rtt_tree.mean(),
                 min_rtt: rtt_tree.min().unwrap_or_default(),
@@ -217,8 +228,8 @@ fn create_tx_callback(
     let _tx_token = event_loop.add_timer(&timer_spec, &rx_token, move |inner_socket, _| {
         let mut received_bytes = vec![];
         let mut timestamps = vec![];
-
         let timestamp = NtpTimestamp::try_from(DateTime::utc_now())?;
+
         tx_sessions.borrow().iter().for_each(|session| {
             let twamp_test_message = SenderMessage::new(
                 session.seq_number.load(Ordering::SeqCst),
@@ -236,6 +247,7 @@ fn create_tx_callback(
             received_bytes.push(sent);
             timestamps.push(timestamp);
         });
+
         tx_sessions
             .borrow()
             .iter()
@@ -245,10 +257,42 @@ fn create_tx_callback(
                     sequence_number: session.seq_number.load(Ordering::SeqCst),
                     timestamp: NtpTimestamp::from(*timestamp),
                     error_estimate: ErrorEstimate::new(1, 1, 1, 1).unwrap(),
-                    padding: vec![0u8; 0],
+                    padding: Vec::new(),
                 };
                 session.add_to_sent(Box::new(twamp_test_message))
             });
+        Ok(0)
+    })?;
+    Ok(0)
+}
+
+fn create_tx_correct_callback(
+    event_loop: &mut EventLoop<TimestampedUdpSocket>,
+    timer_spec: Itimerspec,
+    rx_token: Token,
+    tx_sessions: Rc<RefCell<Vec<Session>>>,
+) -> Result<usize, CommonError> {
+    let _tx_token = event_loop.add_timer(&timer_spec, &rx_token, move |inner_socket, _| {
+        let mut tx_timestamps = vec![];
+        while let Ok((_res, _address, tx_timestamp)) = inner_socket.receive_error() {
+            tx_timestamps.push(tx_timestamp);
+        }
+        let length = tx_sessions.borrow().len();
+        // mutably iterate through the sessions. Timestamps are ordered by target and then by sequence number
+        // so to update the correct ones, we need to iterate through the sessions in the same order
+        for i in 0..length {
+            let session_timestamps = tx_timestamps
+                .iter()
+                .skip(i)
+                .step_by(length)
+                .map(|date_time| date_time.to_owned());
+            // log::warn!(
+            //     "Timestamps: {:?}, Length: {}",
+            //     session_timestamps,
+            //     session_timestamps.len()
+            // );
+            tx_sessions.borrow_mut()[i].update_tx_timestamps(session_timestamps)?;
+        }
         Ok(0)
     })?;
     Ok(5)
@@ -261,25 +305,29 @@ fn create_rx_callback(
 ) -> Result<Token, CommonError> {
     let rx_token = event_loop.register_event_source(my_socket, move |inner_socket, _| {
         let buffer = &mut [0; 1024];
-        let (result, socket_address, timestamp) = inner_socket.receive_from(buffer)?;
-        log::info!("Received {} bytes from {}", result, socket_address);
-        let twamp_test_message: &Result<(ReflectedMessage, usize), CommonError> =
-            &ReflectedMessage::try_from_be_bytes(&buffer[..result]).map_err(|e| e.into());
-        log::info!("Twamp Response Message {:?}", twamp_test_message);
-        if let Ok(twamp_message) = twamp_test_message {
-            let borrowed_sessions = rx_sessions.borrow();
-            let session_option = borrowed_sessions
-                .iter()
-                .find(|session| session.socket_address == socket_address);
-            if let Some(session) = session_option {
-                session.add_to_received(twamp_message.0.to_owned(), timestamp)?;
-                let latest_result = session.get_latest_result();
 
-                let json_result = serde_json::to_string_pretty(&latest_result).unwrap();
-                log::debug!("Latest {}", json_result);
+        if let Ok((result, socket_address, timestamp)) = inner_socket.receive_from(buffer) {
+            log::debug!("Received {} bytes from {}", result, socket_address);
+            let received_bytes = &buffer[..result];
+            let twamp_test_message: &Result<(ReflectedMessage, usize), CommonError> =
+                &ReflectedMessage::try_from_be_bytes(received_bytes).map_err(|e| e.into());
+            log::debug!("Twamp Response Message {:?}", twamp_test_message);
+            if let Ok(twamp_message) = twamp_test_message {
+                let borrowed_sessions = rx_sessions.borrow();
+                let session_option = borrowed_sessions
+                    .iter()
+                    .find(|session| session.socket_address == socket_address);
+                if let Some(session) = session_option {
+                    session.add_to_received(twamp_message.0.to_owned(), timestamp)?;
+                    let latest_result = session.get_latest_result();
+
+                    let json_result = serde_json::to_string_pretty(&latest_result).unwrap();
+                    log::debug!("Latest {}", json_result);
+                }
             }
-        }
-        Ok(result as i32)
+            return Ok(result as i32);
+        };
+        Ok(0)
     })?;
     Ok(rx_token)
 }

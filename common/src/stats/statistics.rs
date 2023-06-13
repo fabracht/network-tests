@@ -281,7 +281,12 @@ impl OrderStatisticsTree {
 
     pub fn mean(&self) -> f64 {
         let sum = self.sum(self.root.as_ref());
-        sum / self.size() as f64
+        let mean = sum / self.size() as f64;
+        if mean.is_nan() {
+            0.0
+        } else {
+            mean
+        }
     }
 
     pub fn sum(&self, node: Option<&Box<Node>>) -> f64 {
@@ -313,7 +318,12 @@ impl OrderStatisticsTree {
     }
 
     pub fn std_dev(&self) -> f64 {
-        self.variance().sqrt()
+        let std_dev = self.variance().sqrt();
+        if std_dev.is_nan() {
+            0.0
+        } else {
+            std_dev
+        }
     }
 
     pub fn median(&self) -> Option<f64> {

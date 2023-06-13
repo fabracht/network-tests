@@ -20,6 +20,7 @@ pub struct Session {
     pub socket_address: SocketAddr,
     pub seq_number: AtomicU32,
     pub results: Rc<RwLock<Vec<PacketResults>>>,
+    pub last_updated: usize,
 }
 
 impl Session {
@@ -29,6 +30,7 @@ impl Session {
             socket_address: host,
             seq_number: AtomicU32::new(0),
             results: Rc::new(RwLock::new(Vec::new())),
+            last_updated: 0,
         }
     }
 
@@ -37,6 +39,7 @@ impl Session {
             socket_address: *host,
             seq_number: AtomicU32::new(0),
             results: Rc::new(RwLock::new(Vec::new())),
+            last_updated: 0,
         }
     }
 
@@ -80,30 +83,34 @@ impl Session {
         })
     }
 
-    // pub fn analyze_packet_loss<'a>(&'_ self) -> Result<(u32, u32, u32), CommonError> {
-    //     let read_lock = self.results.read().map_err(|_| CommonError::Lock)?;
-    //     let mut forward_loss = 0;
-    //     let mut backward_loss = 0;
-    //     let mut total_loss = 0;
-    //     let mut results: Vec<PacketResults> = read_lock.iter().cloned().collect();
+    pub fn update_tx_timestamps(
+        &mut self,
+        mut timestamps: impl Iterator<Item = DateTime>,
+    ) -> Result<(), CommonError> {
+        let mut results = self.results.write()?;
+        // let mut timestamps = timestamps.iter();
 
-    //     results.sort_unstable_by_key(|p| p.sender_seq);
+        for result in results.iter_mut().skip(self.last_updated) {
+            if let Some(timestamp) = timestamps.next() {
+                let delta = timestamp - result.t1;
+                if delta > std::time::Duration::from_micros(10) {
+                    log::error!("Delta: {:?}", delta);
+                } else {
+                    log::warn!("Delta: {:?}", delta);
+                }
+                result.t1 = timestamp;
+                self.last_updated += 1;
+            } else {
+                // return Err(CommonError::IterError(
+                //     "Failed to retrieve next tx Timestamp".to_string(),
+                // ));
+            }
+            // log::info!("Last updated {}", self.last_updated);
+        }
 
-    //     for i in 0..results.len() {
-    //         let current = &results[i];
-    //         if current.reflector_seq.is_none() {
-    //             total_loss += 1;
-    //             if i + 1 < results.len() && results[i + 1].reflector_seq == Some(current.sender_seq)
-    //             {
-    //                 forward_loss += 1;
-    //             } else {
-    //                 backward_loss += 1;
-    //             }
-    //         }
-    //     }
+        Ok(())
+    }
 
-    //     Ok((forward_loss, backward_loss, total_loss))
-    // }
     pub fn analyze_packet_loss<'a>(&'_ self) -> Result<(u32, u32, u32), CommonError> {
         let read_lock = self.results.read().map_err(|_| CommonError::Lock)?;
         let mut forward_loss: i32 = 0;
@@ -154,7 +161,7 @@ impl Session {
 
     pub fn calculate_gamlr_offset(&self) -> Option<f64> {
         if let Ok(results) = self.results.read() {
-            if results.len() < 5 {
+            if results.is_empty() || results.len() < 5 {
                 return None;
             }
             let mut f_owd_tree = OrderStatisticsTree::new();
