@@ -1,6 +1,6 @@
 [package]
 name = "twamp"
-version = "0.1.0"
+version = "0.0.0"
 edition = "2021"
 description = "Network-Tests TWAMP is a Rust project to support network tests used by the industry to monitor network quality and service assurance, currently implementing TWAMP (Two-Way Active Measurement Protocol) Light as per RFC 5357."
 authors = ["Fabricio Bracht <fabracht@gmail.com>"]

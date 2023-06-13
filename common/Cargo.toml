@@ -2,8 +2,9 @@
 name = "common"
 version = "0.1.0"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+description = "Common code for the server and client"
+license = "MIT"
+repository = "https://github.com/fabracht/network-tools"
 
 [dependencies]
 env_logger = "0.10"

@@ -1,7 +1,10 @@
 [package]
 name = "message_macro"
-version = "0.1.0"
+version = "0.0.0"
 edition = "2021"
+description = "A macro to generate/parse binary representation of messages"
+license = "MIT"
+repository = "https://github.com/fabracht/network-tools"
 
 [[bin]]
 name = "macro_test"
