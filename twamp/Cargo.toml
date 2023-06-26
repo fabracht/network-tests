@@ -2,20 +2,21 @@
 name = "twamp"
 version = "0.1.0"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+description = "Network-Tests TWAMP is a Rust project to support network tests used by the industry to monitor network quality and service assurance, currently implementing TWAMP (Two-Way Active Measurement Protocol) Light as per RFC 5357."
+authors = ["Fabricio Bracht <fabracht@gmail.com>"]
+license = "MIT"
+repository = "https://github.com/fabracht/network-tools"
 
 [dependencies]
 env_logger = "0.10"
-libc = "0.2.139"
+libc = "0.2"
 log = "0.4"
 mio = { version = "0.8.5", features = ["os-poll", "net", "os-ext"] }
 serde = { version = "1.0", features = ["derive"] }
-serde_yaml = "0.9.17"
+serde_yaml = "0.9"
 serde_json = "1.0"
 thiserror = "1.0"
 validator = { version = "0.16", features = ["derive"] }
-log4rs = "1.2.0"
+log4rs = "1.2"
 common = { path = "../common" }
 message_macro = { path = "../message_macro/message_macro" }
-clap = { version = "4.2.1", features = ["derive"] }
