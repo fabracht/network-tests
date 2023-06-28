@@ -22,6 +22,9 @@ To run the TWAMP test, use the following command:
 cargo run --release --bin twamp -- -c "path_to_configuration_file"
 ```
 
+## Configuration
+
+
 # Future Development
 
 The Network-Tests project is still in progress, and there is a plan to support other network tests as mentioned above. The project will be updated regularly, and new features will be added to improve the network quality and service assurance tests.
