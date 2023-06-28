@@ -1,6 +1,0 @@
-FROM arm64v8/ubuntu:latest
-WORKDIR /app
-COPY ./twamp/log_config.yml /app/
-COPY ./twamp/receiver_config.json /app/
-COPY ./target/aarch64-unknown-linux-gnu/release/twamp /app/
-CMD ["/app/twamp", "-c", "/app/receiver_config.json"]

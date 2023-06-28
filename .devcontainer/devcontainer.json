@@ -17,7 +17,8 @@
 				"tamasfe.even-better-toml",
 				"eamodio.gitlens",
 				"stkb.rewrap",
-				"davidanson.vscode-markdownlint"
+				"davidanson.vscode-markdownlint",
+				"WakaTime.vscode-wakatime"
 			]
 		}
 	},
