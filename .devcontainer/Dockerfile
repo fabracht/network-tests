@@ -9,6 +9,9 @@ ARG USER_GID=$USER_UID
 
 # The username for the new user
 ARG USERNAME=vscode
+# Install sudo
+RUN apt-get update && \
+    apt-get install -y sudo
 
 # Create the user with the specified USER_UID and add it to sudoers
 RUN groupadd --gid $USER_GID $USERNAME \
