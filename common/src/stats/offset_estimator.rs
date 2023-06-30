@@ -75,7 +75,7 @@ where
 ///
 /// This function implements the Marsaglia polar method, an algorithm for generating
 /// independent, standard normally distributed (Gaussian) random numbers.
-/// /// References:
+/// References:
 /// George Marsaglia. "Generating a Variable from the Tail of the Normal Distribution".
 /// Technometrics, Vol. 6, No. 3 (Aug., 1964), pp. 101-102.
 fn marsaglia_polar_sample(rng: &mut LcgRng) -> f64 {
