@@ -36,11 +36,30 @@ impl Itimerspec {
     }
 }
 
+/// `EventLoopTrait` defines the behavior for an event loop.
+///
+/// This trait is implemented by types that can be used to manage and
+/// control event-driven systems, such as network services.
 pub trait EventLoopTrait<T: AsRawFd + for<'a> Socket<'a, T>> {
+    /// Creates a new event loop instance with the given capacity.
+    ///
+    /// # Errors
+    /// Returns `CommonError` if the creation fails.
     fn new(event_capacity: usize) -> Result<Self, CommonError>
     where
         Self: Sized;
+    /// Generates a new unique token.
+    ///
+    /// Tokens are used to identify registered event sources.
     fn generate_token(&self) -> Token;
+    /// Registers an event source to the event loop.
+    ///
+    /// The `event_source` is the entity that can produce events.
+    /// The `callback` is a function that will be called when an event
+    /// is received for the registered `event_source`.
+    ///
+    /// # Errors
+    /// Returns `CommonError` if the registration fails.
     fn register_event_source<F>(
         &mut self,
         event_source: T,
@@ -48,10 +67,46 @@ pub trait EventLoopTrait<T: AsRawFd + for<'a> Socket<'a, T>> {
     ) -> Result<Token, CommonError>
     where
         F: FnMut(&mut T, Token) -> Result<i32, CommonError> + 'static;
+    /// Unregisters the specified event source from the event loop.
+    ///
+    /// The `token` identifies the event source to be unregistered.
+    ///
+    /// # Errors
+    /// Returns `CommonError` if the unregistration fails.
     fn unregister_event_source(&mut self, token: Token) -> Result<(), CommonError>;
+
+    /// Unregisters a timed event source from the event loop.
+    ///
+    /// The `token` identifies the timed event source to be unregistered.
+    ///
+    /// # Errors
+    /// Returns `CommonError` if the unregistration fails.
     fn unregister_timed_event_source(&self, token: Token) -> Result<(), CommonError>;
+
+    /// Runs the event loop.
+    ///
+    /// The event loop will keep running until an error occurs or it is manually stopped.
+    ///
+    /// # Errors
+    /// Returns `CommonError` if running the event loop fails.
     fn run(&mut self) -> Result<(), CommonError>;
+
+    /// Adds a timed event to the event loop.
+    ///
+    /// The `time_spec` specifies when the event should be triggered.
+    ///
+    /// # Errors
+    /// Returns `CommonError` if adding the timed event fails.
     fn add_duration(&self, time_spec: &Itimerspec) -> Result<Token, CommonError>;
+
+    /// Adds a timer to the event loop.
+    ///
+    /// The `time_spec` specifies when the timer should be triggered.
+    /// The `token` is the identifier for the timer.
+    /// The `callback` is a function that will be called when the timer is triggered.
+    ///
+    /// # Errors
+    /// Returns `CommonError` if adding the timer fails.
     fn add_timer<F>(
         &mut self,
         time_spec: &Itimerspec,

@@ -16,23 +16,43 @@ use crate::{
     socket::Socket,
 };
 
+/// Event loop specifically tailored for Linux environments.
+///
+/// This event loop uses epoll (through the mio crate) for I/O multiplexing, and timerfd for timers.
+///
+/// # Type Parameters
+///
+/// * `T`: A type that implements both `AsRawFd` and `Socket`. This is the type of socket that will be managed by the event loop.
 pub struct LinuxEventLoop<T: AsRawFd + for<'a> Socket<'a, T>> {
     poll: Poll,
     events: Events,
-    pub sources: HashMap<Token, Source<T>>,
+    /// A mapping from tokens to registered I/O sources.
+    sources: HashMap<Token, Source<T>>,
+    /// A mapping from tokens to registered timed sources.
     timed_sources: HashMap<Token, TimedSource<T>>,
     next_token: AtomicUsize,
     registration_sender: mpsc::Sender<Source<T>>,
     registration_receiver: mpsc::Receiver<Source<T>>,
+    /// Optional timer specification for an overtime period.
+    /// The overtime period removes all timed events
     overtime: Option<Itimerspec>,
 }
 
 impl<T: AsRawFd + for<'a> Socket<'a, T>> LinuxEventLoop<T> {
-    /// Returns the path to the Inter-Process Communication (IPC) socket
+    /// Returns a sender for the channel used to communicate with the event loop.
+    ///
+    /// # Returns
+    ///
+    /// A clone of the `mpsc::Sender` used by the event loop.
     pub fn get_communication_channel(&self) -> mpsc::Sender<Source<T>> {
         self.registration_sender.clone()
     }
 
+    /// Sets a new overtime period for the event loop.
+    ///
+    /// # Parameters
+    ///
+    /// * `overtime`: A `Itimerspec` specifying the new overtime period.
     pub fn set_overtime(&mut self, overtime: Itimerspec) {
         self.overtime = Some(overtime);
     }
@@ -89,8 +109,8 @@ impl<T: AsRawFd + for<'a> Socket<'a, T> + 'static> EventLoopTrait<T> for LinuxEv
                             callback(source, *inner_token)?;
                             reset_timer(timer_source)?;
                         }
-                    // else only triggers on duration and overtime
                     } else {
+                        // else only triggers on duration and overtime
                         if self.overtime.is_none() {
                             log::debug!("No overtime");
                             break 'outer;
@@ -218,6 +238,15 @@ impl<T: AsRawFd + for<'a> Socket<'a, T> + 'static> EventLoopTrait<T> for LinuxEv
     }
 }
 
+/// Resets the specified timer.
+///
+/// # Parameters
+///
+/// * `timer_raw`: A mutable reference to the raw file descriptor of the timer to reset.
+///
+/// # Returns
+///
+/// A `Result` that is `Ok(())` if the timer was successfully reset, and `Err(CommonError)` otherwise.
 pub fn reset_timer(timer_raw: &mut RawFd) -> Result<(), CommonError> {
     let timer_spec = &mut libc::itimerspec {
         it_interval: libc::timespec {
@@ -243,6 +272,11 @@ pub fn reset_timer(timer_raw: &mut RawFd) -> Result<(), CommonError> {
     Ok(())
 }
 
+/// Creates a new non-blocking Unix datagram socket.
+///
+/// # Returns
+///
+/// A `Result` that is `Ok(UnixDatagram)` if the socket was successfully created, and `Err(CommonError)` otherwise.
 pub fn create_non_blocking_unix_datagram() -> Result<UnixDatagram, CommonError> {
     let socket_fd = unsafe { libc::socket(libc::AF_UNIX, libc::SOCK_DGRAM, 0) };
     if socket_fd < 0 {
