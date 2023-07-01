@@ -23,6 +23,15 @@ pub trait Socket<'a, T: AsRawFd>: Sized + AsRawFd {
     /// # Returns
     ///
     /// A `Result` that contains the number of bytes sent and the DateTime when the message was sent, or a `CommonError` if an error occurred.
+    ///
+    /// # Errors
+    ///
+    /// * `CommonError::Io` - An I/O error occurred.
+    ///
+    /// # Warning
+    ///
+    /// This function will error out when called on a non-connected socket. Always ensure that
+    /// the socket is connected before attempting to send data.
     fn send(&self, message: impl BeBytes) -> Result<(usize, DateTime), CommonError>;
 
     /// Sends the given message to the specified socket address.
