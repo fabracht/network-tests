@@ -6,7 +6,7 @@ edition = "2021"
 publish = true
 license = "MIT"
 repository = "https://github.com/fabracht/network-tools/message_macro/message_macro_derive"
-
+readme = "README.md"
 
 [lib]
 proc-macro = true
