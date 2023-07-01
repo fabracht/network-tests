@@ -310,7 +310,7 @@ impl<'a> Socket<'a, TimestampedUdpSocket> for TimestampedUdpSocket {
     }
 
     fn receive(&self, _buffer: &mut [u8]) -> Result<(usize, DateTime), CommonError> {
-        todo!()
+        unimplemented!()
     }
 
     fn receive_from(

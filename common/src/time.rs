@@ -220,7 +220,7 @@ impl NtpTimestamp {
         NtpTimestamp { seconds, fraction }
     }
 
-    /// Retrieves the Local - GM time offset
+    /// Retrieves the Local - GM time offset in minutes
     pub fn get_timezone_offset(&self) -> i32 {
         let mut now: time_t = 0;
         unsafe {
