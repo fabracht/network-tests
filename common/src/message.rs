@@ -1,23 +1,17 @@
-//! This module provides data structures and functions for handling the different types of messages used in
-//! the Two-Way Active Measurement Protocol (TWAMP). It includes:
-//!
-//! * [`ErrorEstimate`]: A struct representing the estimation on the error on a timestamp based on synchronization method used.
-//! * [`ReflectedMessage`]: A struct representing the unauthenticated TWAMP message.
-//! * [`NtpTimestamp`]: A struct representing an NTP timestamp.
-//!
-//! The module also provides conversion functions between the different types of messages and byte vectors, and
-//! to convert from an NTP timestamp to a UTC [`DateTime`].
-//!
-
+//! This module provides handling for generic messages that involve the exchange of
+//! four timestamps (t1, t2, t3, t4), which are common in various network measurement protocols.
 use crate::time::DateTime;
 use core::time::Duration;
 use serde::{ser::SerializeStruct, Deserialize, Serialize, Serializer};
 use std::net::SocketAddr;
 
+/// `Message` is a trait that requires implementation of `packet_results()` function.
 pub trait Message {
     fn packet_results(&self) -> PacketResults;
 }
 
+/// `PacketResults` represents a generic message with four timestamps.
+/// Fields that might not be available are optional.
 #[derive(Debug, Deserialize, Clone, Copy)]
 pub struct PacketResults {
     pub sender_seq: u32,
@@ -69,6 +63,7 @@ impl PacketResults {
     }
 }
 
+/// `SessionPackets` holds the address and optionally the packets of a test session.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SessionPackets {
     pub address: SocketAddr,
@@ -76,6 +71,7 @@ pub struct SessionPackets {
     pub packets: Option<Vec<PacketResults>>,
 }
 
+/// `TimestampsResult` is the result of a test session, including an error string if there was an issue.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TimestampsResult {
     pub session: SessionPackets,
