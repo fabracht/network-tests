@@ -1,12 +1,12 @@
-# Message Macro Derive
+# BeBytes Derive
 
-Message Macro Derive is a procedural macro crate that provides a custom derive macro for generating serialization and deserialization methods for network structs in Rust. The macro generates code to convert the struct into a byte representation (serialization) and vice versa (deserialization) using big endian order. It aims to simplify the process of working with network protocols and message formats by automating the conversion between Rust structs and byte arrays.
+BeBytes Derive is a procedural macro crate that provides a custom derive macro for generating serialization and deserialization methods for network structs in Rust. The macro generates code to convert the struct into a byte representation (serialization) and vice versa (deserialization) using big endian order. It aims to simplify the process of working with network protocols and message formats by automating the conversion between Rust structs and byte arrays.
 
-**Note: Message Macro Derive is currently in development and has not been thoroughly tested in production environments. Use it with caution and ensure proper testing and validation in your specific use case.**
+**Note: BeBytes Derive is currently in development and has not been thoroughly tested in production environments. Use it with caution and ensure proper testing and validation in your specific use case.**
 
 ## Usage
 
-To use Message Macro Derive, add it as a dependency in your `Cargo.toml` file:
+To use BeBytes Derive, add it as a dependency in your `Cargo.toml` file:
 
 ```toml
 [dependencies]
@@ -32,7 +32,7 @@ The BeBytes derive macro will generate the following methods for your struct:
 
 ## Example
 
-Here's an example showcasing the usage of the Message Macro Derive:
+Here's an example showcasing the usage of the BeBytes Derive:
 
 ```rust
 use message_macro_derive::BeBytes;
