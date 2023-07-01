@@ -1,11 +1,12 @@
 [package]
 name = "message_macro_derive"
 description = "A macro to generate/parse binary representation of messages"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 publish = true
 license = "MIT"
-repository = "https://github.com/fabracht/network-tools"
+repository = "https://github.com/fabracht/network-tools/message_macro/message_macro_derive"
+
 
 [lib]
 proc-macro = true
