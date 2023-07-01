@@ -10,10 +10,11 @@ To use Message Macro Derive, add it as a dependency in your `Cargo.toml` file:
 
 ```toml
 [dependencies]
-message_macro_derive = "0.1.0"
+message_macro_derive = "0.1"
 ```
 
 Then, import the BeBytes trait from the message_macro_derive crate and derive it for your struct:
+
 ```rust
 use message_macro_derive::BeBytes;
 
@@ -29,7 +30,7 @@ The BeBytes derive macro will generate the following methods for your struct:
 - `to_be_bytes(&self) -> Vec<u8>`: A method to convert the struct into a byte representation. It returns a `Vec<u8>` containing the serialized bytes.
 - `field_size(&self) -> usize`: A method to calculate the size (in bytes) of the struct.
 
-# Example
+## Example
 
 Here's an example showcasing the usage of the Message Macro Derive:
 
@@ -62,6 +63,6 @@ fn main() {
 
 In this example, we define a struct MyStruct with three fields. The `#[U8]` attribute is used to specify the size and position of the fields for serialization. The BeBytes derive macro generates the serialization and deserialization methods for the struct, allowing us to easily convert it to bytes and back.
 
-# License
+## License
 
 This project is licensed under the [MIT License](https://chat.openai.com/LICENSE)
