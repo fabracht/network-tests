@@ -19,8 +19,6 @@ pub mod error;
 pub mod epoll_loop;
 pub mod event_loop;
 pub mod host;
-#[cfg(target_os = "macos")]
-pub mod kevent_loop;
 pub mod message;
 pub mod socket;
 
@@ -28,9 +26,9 @@ pub mod stats;
 pub mod tcp_socket;
 pub mod time;
 pub mod udp_socket;
-/// A trait representing a TWAMP strategy, which is an abstraction for TWAMP implementors to
+/// A trait representing a Test strategy, which is an abstraction for Test implementors to
 /// customize the runtime of the test. Implementors of this trait provide a custom implementation
-/// of the `execute` method, which is called to execute the TWAMP test with the specified
+/// of the `execute` method, which is called to execute the Test test with the specified
 /// configuration.
 ///
 /// # Type Parameters
@@ -38,12 +36,12 @@ pub mod udp_socket;
 /// - `R`: The type of result that is returned by the `execute` method.
 /// - `E`: The type of error that can be returned by the `execute` method.
 pub trait Strategy<R: TestResult, E: std::error::Error> {
-    /// Executes the TWAMP test with the specified configuration, using the custom implementation
+    /// Executes the Test test with the specified configuration, using the custom implementation
     /// provided by the implementor of this trait.
     ///
     /// # Returns
     ///
-    /// A `Result` that contains the result of the TWAMP test, or an error if the test failed.
+    /// A `Result` that contains the result of the Test test, or an error if the test failed.
     fn execute(&mut self) -> std::result::Result<R, E>;
 }
 

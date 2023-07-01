@@ -8,7 +8,8 @@ use std::{
 };
 
 use common::{
-    error::CommonError, event_loop::EventLoopTrait, tcp_socket::TimestampedTcpSocket, Strategy,
+    error::CommonError, event_loop::EventLoopTrait, socket::Socket,
+    tcp_socket::TimestampedTcpSocket, Strategy,
 };
 
 use crate::twamp_light_sender::result::TwampResult;
@@ -36,12 +37,18 @@ impl Strategy<TwampResult, CommonError> for Control {
 
         let mut socket = TimestampedTcpSocket::new(listener.into_raw_fd());
         #[cfg(target_os = "linux")]
-        socket.set_socket_options(libc::SOCK_NONBLOCK | libc::SOCK_CLOEXEC, None)?;
+        socket.set_socket_options(
+            libc::SOL_SOCKET,
+            libc::SOCK_NONBLOCK | libc::SOCK_CLOEXEC,
+            None,
+        )?;
 
-        let value = libc::SOF_TIMESTAMPING_SOFTWARE
-            | libc::SOF_TIMESTAMPING_RX_SOFTWARE
-            | libc::SOF_TIMESTAMPING_TX_SOFTWARE;
-        socket.set_socket_options(libc::SO_TIMESTAMPING, Some(value as i32))?;
+        // let value = libc::SOF_TIMESTAMPING_SOFTWARE
+        //     | libc::SOF_TIMESTAMPING_RX_SOFTWARE
+        //     | libc::SOF_TIMESTAMPING_TX_SOFTWARE;
+        // socket.set_socket_options(libc::SO_TIMESTAMPING, Some(value as i32))?;
+        socket.set_timestamping_options()?;
+
         socket.listen(0)?;
         // Create the event loop
         let mut event_loop = EventLoop::new(1024)?;

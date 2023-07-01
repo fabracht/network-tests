@@ -1,8 +1,13 @@
+/// Module containing error handling components.
+/// `CommonError` is an enum containing error variants which are likely to be used across different parts of the codebase.
 use std::error::Error;
 use std::fmt::{Display, Formatter, Result as FmtResult};
 use std::sync::{PoisonError, RwLockWriteGuard};
 
+/// A handy Result type specific to the common error set defined by `CommonError`.
 pub type Result<T> = std::result::Result<T, CommonError>;
+
+/// The set of all errors which can be produced in the system.
 #[derive(Debug)]
 pub enum CommonError {
     Io(std::io::Error),
@@ -11,11 +16,18 @@ pub enum CommonError {
     AddrParseError(std::net::AddrParseError),
     Infallible(std::convert::Infallible),
     Lock,
-    Dns(String),
-    KeventRegistrationError(std::io::Error), // Added new error variant
+    Dns(std::io::Error),
+    Generic(String),
     ValidationError(validator::ValidationErrors),
     SendError(String),
     IterError(String),
+    SocketCreateFailed(std::io::Error),
+    SocketConnectFailed(std::io::Error),
+    SocketBindFailed(std::io::Error),
+    SocketListenFailed(std::io::Error),
+    SocketAcceptFailed(std::io::Error),
+    SocketGetPeerName(std::io::Error),
+    UnknownAddressFamily,
 }
 
 impl Display for CommonError {
@@ -28,9 +40,6 @@ impl Display for CommonError {
             CommonError::Infallible(e) => write!(f, "Infallible error: {}", e),
             CommonError::Lock => write!(f, "Lock poisoned"),
             CommonError::Dns(e) => write!(f, "DNS error: {}", e),
-            CommonError::KeventRegistrationError(e) => {
-                write!(f, "Kevent registration error: {}", e)
-            }
             CommonError::ValidationError(e) => {
                 write!(f, "Failed to validate: {}", e)
             }
@@ -40,6 +49,26 @@ impl Display for CommonError {
             CommonError::IterError(e) => {
                 write!(f, "Failed to iterate: {}", e)
             }
+            CommonError::Generic(e) => write!(f, "We've entered uncharted waters: {}", e),
+            CommonError::SocketCreateFailed(e) => {
+                write!(f, "Failed to create Socket: {}", e)
+            }
+            CommonError::SocketConnectFailed(e) => {
+                write!(f, "Failed to connect to address: {}", e)
+            }
+            CommonError::SocketBindFailed(e) => {
+                write!(f, "Failed to bind Socket to provided address: {}", e)
+            }
+            CommonError::SocketListenFailed(e) => {
+                write!(f, "Failed to call listen on socket: {}", e)
+            }
+            CommonError::SocketAcceptFailed(e) => {
+                write!(f, "Failed to accept TCP connection: {}", e)
+            }
+            CommonError::SocketGetPeerName(e) => {
+                write!(f, "Failed to get peer socket address: {}", e)
+            }
+            CommonError::UnknownAddressFamily => write!(f, "Failed to match address family"),
         }
     }
 }
@@ -78,18 +107,18 @@ impl<T> From<PoisonError<RwLockWriteGuard<'_, Vec<T>>>> for CommonError {
 
 impl From<&str> for CommonError {
     fn from(s: &str) -> Self {
-        CommonError::Dns(s.to_owned())
+        CommonError::Generic(s.to_owned())
     }
 }
 
 impl From<String> for CommonError {
     fn from(s: String) -> Self {
-        CommonError::Dns(s)
+        CommonError::Generic(s)
     }
 }
 
 impl From<Box<dyn std::error::Error>> for CommonError {
     fn from(e: Box<dyn std::error::Error>) -> Self {
-        CommonError::Dns(e.to_string())
+        CommonError::Generic(e.to_string())
     }
 }

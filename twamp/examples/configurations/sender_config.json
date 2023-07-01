@@ -6,9 +6,9 @@
     }
   ],
   "mode": "LIGHT_SENDER",
-  "source_ip_address": "0.0.0.0:45572",
-  "collection_period": 10,
-  "packet_interval": 500,
+  "source_ip_address": "127.0.0.1:45572",
+  "collection_period": 2,
+  "packet_interval": 100,
   "padding": 41,
   "ref_wait": 1,
   "last_message_timeout": 1

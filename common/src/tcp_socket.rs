@@ -10,6 +10,23 @@ use std::{
     os::fd::{AsRawFd, RawFd},
 };
 
+pub enum SocketError {
+    BindFailed(io::Error),
+    ListenFailed(io::Error),
+    AcceptFailed(io::Error),
+}
+
+/// A TCP socket wrapper that includes the raw file descriptor.
+///
+/// This structure is intended to wrap the raw file descriptor provided by a
+/// TCP socket and includes some common socket operations like `bind`, `listen`,
+/// `accept`, and `connect`. It also provides timestamped send and receive operations.
+///
+/// ## Safety
+///
+/// This structure performs raw system calls via the libc crate. Incorrect use could lead
+/// to system errors. Ensure the correct use of these system calls in accordance with
+/// POSIX standards.
 pub struct TimestampedTcpSocket {
     inner: RawFd,
 }
@@ -41,6 +58,14 @@ impl Deref for TimestampedTcpSocket {
 }
 
 impl TimestampedTcpSocket {
+    /// Create a new instance of `TimestampedTcpSocket` from a raw file descriptor.
+    ///
+    /// This method sets the `SO_REUSEADDR` option on the socket to allow the reuse
+    /// of local addresses.
+    ///
+    /// ## Safety
+    ///
+    /// The provided file descriptor should be valid and correspond to a socket.
     pub fn new(socket: RawFd) -> Self {
         unsafe {
             libc::setsockopt(
@@ -54,27 +79,23 @@ impl TimestampedTcpSocket {
         Self { inner: socket }
     }
 
-    pub fn set_socket_options(&mut self, name: i32, value: Option<i32>) -> Result<(), CommonError> {
-        let _res = unsafe {
-            libc::setsockopt(
-                self.inner,
-                libc::SOL_SOCKET,
-                name,
-                &value.unwrap_or(0) as *const std::ffi::c_int as *const std::ffi::c_void,
-                std::mem::size_of::<std::ffi::c_int>() as u32,
-            )
-        };
-        Ok(())
-    }
-
-    pub fn bind(addr: &SocketAddr) -> io::Result<Self> {
+    /// Binds the socket to a specific address.
+    ///
+    /// The socket will be available for incoming connection attempts on the
+    /// specified `addr`.
+    ///
+    /// # Errors
+    ///
+    /// This method returns an error if the socket cannot be bound to the provided
+    /// address.
+    pub fn bind(addr: &SocketAddr) -> Result<Self, CommonError> {
         let socket_fd = match addr {
             SocketAddr::V4(_) => unsafe { libc::socket(libc::AF_INET, libc::SOCK_STREAM, 0) },
             SocketAddr::V6(_) => unsafe { libc::socket(libc::AF_INET6, libc::SOCK_STREAM, 0) },
         };
 
         if socket_fd < 0 {
-            return Err(io::Error::last_os_error());
+            return Err(CommonError::SocketCreateFailed(io::Error::last_os_error()));
         }
 
         let (sock_addr, sock_addr_len) = match addr {
@@ -113,21 +134,40 @@ impl TimestampedTcpSocket {
         };
 
         if unsafe { libc::bind(socket_fd, sock_addr, sock_addr_len) } < 0 {
-            return Err(io::Error::last_os_error());
+            return Err(CommonError::SocketBindFailed(io::Error::last_os_error()));
         }
 
         Ok(TimestampedTcpSocket { inner: socket_fd })
     }
 
-    pub fn listen(&self, backlog: i32) -> io::Result<()> {
+    /// Listen for incoming connections.
+    ///
+    /// The `backlog` parameter defines the maximum number of pending connections.
+    ///
+    /// # Errors
+    ///
+    /// This method returns an error if the socket cannot be set to listen mode.
+    pub fn listen(&self, backlog: i32) -> Result<(), CommonError> {
         if unsafe { libc::listen(self.inner, backlog) } < 0 {
-            Err(io::Error::last_os_error())
+            Err(CommonError::SocketListenFailed(io::Error::last_os_error()))
         } else {
             Ok(())
         }
     }
 
-    pub fn accept(&self) -> io::Result<(TimestampedTcpSocket, SocketAddr)> {
+    /// Accept a new incoming connection attempt.
+    ///
+    /// This method blocks until a connection attempt is made to the socket.
+    ///
+    /// # Returns
+    ///
+    /// This method returns a new `TimestampedTcpSocket` for the incoming connection
+    /// and the address of the peer socket.
+    ///
+    /// # Errors
+    ///
+    /// This method returns an error if an incoming connection cannot be accepted.
+    pub fn accept(&self) -> Result<(TimestampedTcpSocket, SocketAddr), CommonError> {
         let mut addr_storage: libc::sockaddr_storage = unsafe { std::mem::zeroed() };
         let mut addr_len = std::mem::size_of_val(&addr_storage) as libc::socklen_t;
 
@@ -140,7 +180,7 @@ impl TimestampedTcpSocket {
         };
 
         if new_socket_fd < 0 {
-            return Err(io::Error::last_os_error());
+            return Err(CommonError::SocketAcceptFailed(io::Error::last_os_error()));
         }
 
         let client_addr = match addr_storage.ss_family as libc::c_int {
@@ -161,12 +201,7 @@ impl TimestampedTcpSocket {
                 let scope_id = sockaddr.sin6_scope_id;
                 SocketAddr::V6(std::net::SocketAddrV6::new(ip, port, flowinfo, scope_id))
             }
-            _ => {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "Invalid address family",
-                ))
-            }
+            _ => return Err(CommonError::UnknownAddressFamily),
         };
         Ok((
             TimestampedTcpSocket {
@@ -176,15 +211,21 @@ impl TimestampedTcpSocket {
         ))
     }
 
-    // Connect to a remote address
-    pub fn connect(addr: SocketAddr) -> io::Result<TimestampedTcpSocket> {
+    /// Connect to a remote socket at the provided address.
+    ///
+    /// This method blocks until the connection is established.
+    ///
+    /// # Errors
+    ///
+    /// This method returns an error if the connection attempt fails.
+    pub fn connect(addr: SocketAddr) -> Result<TimestampedTcpSocket, CommonError> {
         let socket_fd = match addr {
             SocketAddr::V4(_) => unsafe { libc::socket(libc::AF_INET, libc::SOCK_STREAM, 0) },
             SocketAddr::V6(_) => unsafe { libc::socket(libc::AF_INET6, libc::SOCK_STREAM, 0) },
         };
 
         if socket_fd < 0 {
-            return Err(io::Error::last_os_error());
+            return Err(CommonError::SocketCreateFailed(io::Error::last_os_error()));
         }
 
         let (sock_addr, sock_addr_len) = match addr {
@@ -227,7 +268,7 @@ impl TimestampedTcpSocket {
         if result < 0 {
             let err = io::Error::last_os_error();
             unsafe { libc::close(socket_fd) };
-            return Err(err);
+            return Err(CommonError::SocketConnectFailed(err));
         }
 
         Ok(TimestampedTcpSocket { inner: socket_fd })
@@ -235,7 +276,7 @@ impl TimestampedTcpSocket {
 }
 
 impl<'a> Socket<'a, TimestampedTcpSocket> for TimestampedTcpSocket {
-    fn from_raw_fd(fd: RawFd) -> TimestampedTcpSocket {
+    unsafe fn from_raw_fd(fd: RawFd) -> TimestampedTcpSocket {
         Self { inner: fd }
     }
 
@@ -300,8 +341,47 @@ impl<'a> Socket<'a, TimestampedTcpSocket> for TimestampedTcpSocket {
 
     fn receive_from(
         &self,
-        _buffer: &mut [u8],
+        buffer: &mut [u8],
     ) -> Result<(usize, SocketAddr, DateTime), CommonError> {
-        unimplemented!("receive_from is not implemented for TimestampedTcpSocket")
+        let (result, timestamp) = self.receive(buffer)?;
+
+        let mut addr_storage: libc::sockaddr_storage = unsafe { std::mem::zeroed() };
+        let mut addr_len = std::mem::size_of::<libc::sockaddr_storage>() as libc::socklen_t;
+
+        if unsafe {
+            libc::getpeername(
+                self.inner,
+                &mut addr_storage as *mut _ as *mut _,
+                &mut addr_len,
+            )
+        } == -1
+        {
+            return Err(CommonError::SocketGetPeerName(io::Error::last_os_error()));
+        }
+
+        let peer_address = match addr_storage.ss_family as libc::c_int {
+            AF_INET => {
+                let sockaddr: *const sockaddr_in = &addr_storage as *const _ as *const sockaddr_in;
+                let sockaddr: &sockaddr_in = unsafe { &*sockaddr };
+                let ip = Ipv4Addr::from(sockaddr.sin_addr.s_addr.to_le_bytes());
+                let port = u16::from_be(sockaddr.sin_port);
+                SocketAddr::V4(std::net::SocketAddrV4::new(ip, port))
+            }
+            AF_INET6 => {
+                let sockaddr: *const sockaddr_in6 =
+                    &addr_storage as *const _ as *const sockaddr_in6;
+                let sockaddr: &sockaddr_in6 = unsafe { &*sockaddr };
+                let ip = Ipv6Addr::from(sockaddr.sin6_addr.s6_addr);
+                let port = u16::from_be(sockaddr.sin6_port);
+                let flowinfo = sockaddr.sin6_flowinfo;
+                let scope_id = sockaddr.sin6_scope_id;
+                SocketAddr::V6(std::net::SocketAddrV6::new(ip, port, flowinfo, scope_id))
+            }
+            _ => {
+                return Err(CommonError::UnknownAddressFamily);
+            }
+        };
+
+        Ok((result, peer_address, timestamp))
     }
 }

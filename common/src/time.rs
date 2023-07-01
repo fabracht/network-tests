@@ -14,6 +14,13 @@ const NSECS_CONVERSION: f64 = 1_000_000_000.0;
 /// NTP fraction conversion factor (2^32)
 const FRACTION_CONVERSION: f64 = 4_294_967_296.0;
 
+#[repr(C)]
+pub struct ScmTimestamping {
+    pub ts_realtime: libc::timespec,
+    pub ts_mono: libc::timespec,
+    pub ts_raw: libc::timespec,
+}
+
 #[derive(Debug, Deserialize, Clone, Copy)]
 pub struct DateTime {
     pub sec: u32,
@@ -212,6 +219,21 @@ impl NtpTimestamp {
 
         NtpTimestamp { seconds, fraction }
     }
+
+    /// Retrieves the Local - GM time offset in minutes
+    pub fn get_timezone_offset(&self) -> i32 {
+        let mut now: time_t = 0;
+        unsafe {
+            time(&mut now as *mut _);
+            let local_tm: *mut tm = localtime(&now as *const _);
+            let gmt_tm: *mut tm = gmtime(&now as *const _);
+
+            let hour_offset = (*local_tm).tm_hour - (*gmt_tm).tm_hour;
+            let min_offset = (*local_tm).tm_min - (*gmt_tm).tm_min;
+
+            hour_offset * 60 + min_offset
+        }
+    }
 }
 
 impl From<DateTime> for NtpTimestamp {
@@ -237,19 +259,5 @@ impl TryFrom<NtpTimestamp> for DateTime {
         };
 
         Ok(datetime)
-    }
-}
-
-fn _get_timezone_offset() -> i32 {
-    let mut now: time_t = 0;
-    unsafe {
-        time(&mut now as *mut _);
-        let local_tm: *mut tm = localtime(&now as *const _);
-        let gmt_tm: *mut tm = gmtime(&now as *const _);
-
-        let hour_offset = (*local_tm).tm_hour - (*gmt_tm).tm_hour;
-        let min_offset = (*local_tm).tm_min - (*gmt_tm).tm_min;
-
-        hour_offset * 60 + min_offset
     }
 }

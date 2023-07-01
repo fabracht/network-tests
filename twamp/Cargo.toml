@@ -7,8 +7,11 @@ authors = ["Fabricio Bracht <fabracht@gmail.com>"]
 license = "MIT"
 repository = "https://github.com/fabracht/network-tools"
 
+[lib]
+name = "twamp"
+
+
 [dependencies]
-env_logger = "0.10"
 libc = "0.2"
 log = "0.4"
 mio = { version = "0.8.5", features = ["os-poll", "net", "os-ext"] }
@@ -17,6 +20,8 @@ serde_yaml = "0.9"
 serde_json = "1.0"
 thiserror = "1.0"
 validator = { version = "0.16", features = ["derive"] }
-log4rs = "1.2"
 common = { path = "../common" }
 message_macro = { path = "../message_macro/message_macro" }
+
+[dev-dependencies]
+log4rs = "1.2.0"

@@ -1,7 +1,4 @@
 {
-    // Use IntelliSense to learn about possible attributes.
-    // Hover to view descriptions of existing attributes.
-    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
         {
@@ -19,7 +16,10 @@
                     "kind": "bin"
                 }
             },
-            "args": ["-c", "twamp/sender_config.json"],
+            "args": [
+                "-c",
+                "twamp/sender_config.json"
+            ],
             "cwd": "${workspaceFolder}"
         },
         {
@@ -63,21 +63,24 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in library 'rdns'",
-            "cargo": {
-                "args": [
-                    "test",
-                    "--no-run",
-                    "--lib",
-                    "--package=rdns"
-                ],
-                "filter": {
-                    "name": "rdns",
-                    "kind": "lib"
-                }
-            },
-            "args": [],
+            "name": "Debug Example",
+            "program": "${workspaceFolder}/target/debug/examples/${input:exampleName}",
+            "args": [
+                "${input:exampleArgument}"
+            ],
             "cwd": "${workspaceFolder}"
+        }
+    ],
+    "inputs": [
+        {
+            "id": "exampleName",
+            "type": "promptString",
+            "description": "Name of the example to debug"
+        },
+        {
+            "id": "exampleArgument",
+            "type": "promptString",
+            "description": "Argument for the example"
         }
     ]
 }

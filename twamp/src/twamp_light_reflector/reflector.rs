@@ -1,3 +1,7 @@
+use crate::twamp_common::message::ErrorEstimate;
+use crate::twamp_common::message::ReflectedMessage;
+use crate::twamp_common::session::Session;
+use crate::twamp_common::MIN_UNAUTH_PADDING;
 #[cfg(target_os = "linux")]
 use common::epoll_loop::LinuxEventLoop as EventLoop;
 
@@ -11,14 +15,10 @@ use ::common::{error::CommonError, socket::Socket, Strategy, TestResult};
 use common::{
     event_loop::{EventLoopTrait, Itimerspec},
     time::{DateTime, NtpTimestamp},
-    udp_socket::{set_timestamping_options, TimestampedUdpSocket},
+    udp_socket::TimestampedUdpSocket,
 };
 
-use crate::{
-    common::message::{ErrorEstimate, ReflectedMessage, SenderMessage},
-    common::{session::Session, MIN_UNAUTH_PADDING},
-    twamp_light_sender::result::TwampResult,
-};
+use crate::{twamp_common::message::SenderMessage, twamp_light_sender::result::TwampResult};
 
 use super::Configuration;
 
@@ -36,10 +36,8 @@ impl Reflector {
         let socket = mio::net::UdpSocket::bind(self.configuration.source_ip_address.parse()?)?;
         let mut my_socket = TimestampedUdpSocket::new(socket.into_raw_fd());
         my_socket.set_fcntl_options()?;
-        #[cfg(target_os = "linux")]
         my_socket.set_socket_options(libc::SOL_IP, libc::IP_RECVERR, Some(1))?;
-
-        set_timestamping_options(&mut my_socket)?;
+        my_socket.set_timestamping_options()?;
 
         Ok(my_socket)
     }
@@ -82,7 +80,7 @@ impl Strategy<TwampResult, CommonError> for Reflector {
                     padding: vec![0_u8; twamp_test_message.padding.len() - MIN_UNAUTH_PADDING],
                 };
                 inner_socket.send_to(&socket_address, reflected_message.clone())?;
-                session.add_to_sent(Box::new(reflected_message));
+                session.add_to_sent(Box::new(reflected_message))?;
             } else {
                 // Create session
                 let session = Session::from_socket_address(&socket_address);
@@ -104,7 +102,7 @@ impl Strategy<TwampResult, CommonError> for Reflector {
                 // Send message
                 inner_socket.send_to(&socket_address, reflected_message.clone())?;
                 // Add message results to session
-                session.add_to_sent(Box::new(reflected_message));
+                session.add_to_sent(Box::new(reflected_message))?;
                 // Store session
                 borrowed_sessions.push(session);
             }

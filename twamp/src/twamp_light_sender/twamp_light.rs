@@ -8,16 +8,14 @@ use common::{
     socket::Socket,
     stats::statistics::OrderStatisticsTree,
     time::{DateTime, NtpTimestamp},
-    udp_socket::{set_timestamping_options, TimestampedUdpSocket},
+    udp_socket::TimestampedUdpSocket,
     Strategy,
 };
 
-#[cfg(target_os = "macos")]
-use common::kevent_loop::MacOSEventLoop as EventLoop;
 use message_macro::BeBytes;
 
-use crate::common::message::{ErrorEstimate, ReflectedMessage, SenderMessage};
-use crate::common::{session::Session, MIN_UNAUTH_PADDING};
+use crate::twamp_common::message::{ErrorEstimate, ReflectedMessage, SenderMessage};
+use crate::twamp_common::{session::Session, MIN_UNAUTH_PADDING};
 use crate::twamp_light_sender::Configuration as TwampLightConfiguration;
 use core::time::Duration;
 use std::{cell::RefCell, os::fd::IntoRawFd, rc::Rc, sync::atomic::Ordering};
@@ -51,26 +49,26 @@ impl TwampLight {
         }
     }
 
-    fn create_socket(&mut self) -> Result<TimestampedUdpSocket, crate::CommonError> {
+    fn create_socket(&mut self) -> Result<TimestampedUdpSocket, CommonError> {
         let socket = mio::net::UdpSocket::bind(self.source_ip_address.parse().unwrap()).unwrap();
         let mut my_socket = TimestampedUdpSocket::new(socket.into_raw_fd());
 
         my_socket.set_fcntl_options()?;
-        #[cfg(target_os = "linux")]
+
         my_socket.set_socket_options(libc::SOL_IP, libc::IP_RECVERR, Some(1))?;
 
-        set_timestamping_options(&mut my_socket)?;
+        my_socket.set_timestamping_options()?;
 
         Ok(my_socket)
     }
 }
-impl Strategy<TwampResult, crate::CommonError> for TwampLight {
-    fn execute(&mut self) -> Result<TwampResult, crate::CommonError> {
+impl Strategy<TwampResult, CommonError> for TwampLight {
+    fn execute(&mut self) -> Result<TwampResult, CommonError> {
         // Create the sessions vector
         let sessions = self
             .hosts
             .iter()
-            .map(Session::new)
+            .filter_map(|host| Session::new(host).ok())
             .collect::<Vec<Session>>();
         let rc_sessions = Rc::new(RefCell::new(sessions));
 
@@ -250,7 +248,7 @@ fn create_tx_callback(
             .borrow()
             .iter()
             .zip(timestamps.iter())
-            .for_each(|(session, timestamp)| {
+            .try_for_each(|(session, timestamp)| {
                 let twamp_test_message = SenderMessage {
                     sequence_number: session.seq_number.load(Ordering::SeqCst),
                     timestamp: NtpTimestamp::from(*timestamp),
@@ -258,7 +256,7 @@ fn create_tx_callback(
                     padding: Vec::new(),
                 };
                 session.add_to_sent(Box::new(twamp_test_message))
-            });
+            })?;
         Ok(0)
     })?;
     Ok(0)

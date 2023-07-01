@@ -101,25 +101,11 @@ where
     round_f64_with_precision(&num, serializer)
 }
 
-// #[derive(Debug, Serialize, Deserialize, Clone)]
-// pub struct SessionPackets {
-//     pub address: SocketAddr,
-//     #[serde(skip_serializing_if = "Option::is_none")]
-//     pub packets: Option<Vec<PacketResults>>,
-// }
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TwampResult {
     pub session_results: Vec<SessionResult>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
-
-// #[derive(Debug, Serialize, Deserialize, Clone)]
-// pub struct TimestampsResult {
-//     pub session: SessionPackets,
-//     #[serde(skip_serializing_if = "Option::is_none")]
-//     pub error: Option<String>,
-// }
 
 impl TestResult for TwampResult {}
