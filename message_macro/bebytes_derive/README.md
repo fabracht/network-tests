@@ -10,13 +10,13 @@ To use BeBytes Derive, add it as a dependency in your `Cargo.toml` file:
 
 ```toml
 [dependencies]
-message_macro_derive = "0.1"
+bebytes_derive = "0.2"
 ```
 
-Then, import the BeBytes trait from the message_macro_derive crate and derive it for your struct:
+Then, import the BeBytes trait from the bebytes_derive crate and derive it for your struct:
 
 ```rust
-use message_macro_derive::BeBytes;
+use bebytes_derive::BeBytes;
 
 #[derive(BeBytes)]
 struct MyStruct {
