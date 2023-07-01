@@ -14,6 +14,13 @@ const NSECS_CONVERSION: f64 = 1_000_000_000.0;
 /// NTP fraction conversion factor (2^32)
 const FRACTION_CONVERSION: f64 = 4_294_967_296.0;
 
+#[repr(C)]
+pub struct ScmTimestamping {
+    pub ts_realtime: libc::timespec,
+    pub ts_mono: libc::timespec,
+    pub ts_raw: libc::timespec,
+}
+
 #[derive(Debug, Deserialize, Clone, Copy)]
 pub struct DateTime {
     pub sec: u32,

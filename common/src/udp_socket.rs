@@ -10,14 +10,7 @@ use std::{
 
 use crate::error::CommonError;
 use crate::socket::Socket;
-use crate::time::DateTime;
-
-#[repr(C)]
-pub struct ScmTimestamping {
-    pub ts_realtime: libc::timespec,
-    pub ts_mono: libc::timespec,
-    pub ts_raw: libc::timespec,
-}
+use crate::time::{DateTime, ScmTimestamping};
 
 pub struct TimestampedUdpSocket {
     inner: RawFd,
