@@ -212,6 +212,21 @@ impl NtpTimestamp {
 
         NtpTimestamp { seconds, fraction }
     }
+
+    /// Retrieves the Local - GM time offset
+    pub fn get_timezone_offset(&self) -> i32 {
+        let mut now: time_t = 0;
+        unsafe {
+            time(&mut now as *mut _);
+            let local_tm: *mut tm = localtime(&now as *const _);
+            let gmt_tm: *mut tm = gmtime(&now as *const _);
+
+            let hour_offset = (*local_tm).tm_hour - (*gmt_tm).tm_hour;
+            let min_offset = (*local_tm).tm_min - (*gmt_tm).tm_min;
+
+            hour_offset * 60 + min_offset
+        }
+    }
 }
 
 impl From<DateTime> for NtpTimestamp {
@@ -237,19 +252,5 @@ impl TryFrom<NtpTimestamp> for DateTime {
         };
 
         Ok(datetime)
-    }
-}
-
-fn _get_timezone_offset() -> i32 {
-    let mut now: time_t = 0;
-    unsafe {
-        time(&mut now as *mut _);
-        let local_tm: *mut tm = localtime(&now as *const _);
-        let gmt_tm: *mut tm = gmtime(&now as *const _);
-
-        let hour_offset = (*local_tm).tm_hour - (*gmt_tm).tm_hour;
-        let min_offset = (*local_tm).tm_min - (*gmt_tm).tm_min;
-
-        hour_offset * 60 + min_offset
     }
 }
