@@ -98,7 +98,6 @@ version = "0.1.0"
 dependencies = [
  "libc",
  "log",
- "log4rs",
  "message_macro",
  "mio",
  "serde",

@@ -3,7 +3,7 @@ fn main() {
     let error_estimate = ErrorEstimateMini {
         s_bit: 1,
         z_bit: 0,
-        scale: 65,
+        scale: 63,
         multiplier: 3,
     };
     let bytes = error_estimate.to_be_bytes();

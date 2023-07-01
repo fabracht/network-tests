@@ -1,11 +1,11 @@
 #![allow(dead_code)]
+use crate::twamp_common::message::ControlMessageType;
+use crate::twamp_common::message::ServerGreeting;
+use crate::twamp_common::message::ServerStart;
+use crate::TwampLight;
+
 use common::{socket::Socket, tcp_socket::TimestampedTcpSocket, time::NtpTimestamp};
 use message_macro::BeBytes;
-
-use crate::{
-    common::message::{ControlMessageType, ServerGreeting, ServerStart},
-    twamp_light_sender::twamp_light::TwampLight,
-};
 
 #[derive(BeBytes, Debug)]
 struct TestMessage {

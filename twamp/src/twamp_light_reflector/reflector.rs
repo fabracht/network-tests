@@ -1,3 +1,7 @@
+use crate::twamp_common::message::ErrorEstimate;
+use crate::twamp_common::message::ReflectedMessage;
+use crate::twamp_common::session::Session;
+use crate::twamp_common::MIN_UNAUTH_PADDING;
 #[cfg(target_os = "linux")]
 use common::epoll_loop::LinuxEventLoop as EventLoop;
 
@@ -14,11 +18,7 @@ use common::{
     udp_socket::{set_timestamping_options, TimestampedUdpSocket},
 };
 
-use crate::{
-    common::message::{ErrorEstimate, ReflectedMessage, SenderMessage},
-    common::{session::Session, MIN_UNAUTH_PADDING},
-    twamp_light_sender::result::TwampResult,
-};
+use crate::{twamp_common::message::SenderMessage, twamp_light_sender::result::TwampResult};
 
 use super::Configuration;
 

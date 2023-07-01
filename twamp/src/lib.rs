@@ -1,16 +1,20 @@
-use crate::{
-    twamp_control::{control::Control, Configuration as FullReflectorConfiguration},
-    twamp_light_reflector::reflector::Reflector,
-    twamp_light_reflector::Configuration as ReflectorConfiguration,
-    twamp_light_sender::{
-        result::TwampResult, twamp_light::TwampLight, Configuration as LightConfiguration,
-    },
-};
-use common::{error::CommonError, host::Host, Strategy};
+use crate::twamp_control::control::Control;
+use crate::twamp_control::Configuration as ControlConfiguration;
+use crate::twamp_light_reflector::reflector::Reflector;
+use crate::twamp_light_reflector::Configuration as ReflectorConfiguration;
+use crate::twamp_light_sender::twamp_light::TwampLight;
+use crate::twamp_light_sender::Configuration as LightConfiguration;
 
+use ::common::host::Host;
+use common::{error::CommonError, Strategy};
 use serde::{Deserialize, Serialize};
+pub use twamp_light_sender::result::TwampResult;
 use validator::Validate;
 
+mod twamp_common;
+mod twamp_control;
+mod twamp_light_reflector;
+mod twamp_light_sender;
 #[derive(Validate, Serialize, Deserialize, Debug, PartialEq, Clone, Default)]
 
 pub struct TwampConfiguration {
@@ -33,9 +37,7 @@ impl Twamp {
         Self { configuration }
     }
 
-    pub fn generate(
-        &self,
-    ) -> Result<Box<dyn Strategy<TwampResult, crate::CommonError>>, crate::CommonError> {
+    pub fn generate(&self) -> Result<Box<dyn Strategy<TwampResult, CommonError>>, CommonError> {
         let hosts = self
             .configuration
             .hosts
@@ -80,7 +82,7 @@ impl Twamp {
             }
             "FULL_SENDER" => unimplemented!(),
             "FULL_REFLECTOR" => {
-                let configuration = FullReflectorConfiguration {
+                let configuration = ControlConfiguration {
                     mode: self.configuration.mode.clone(),
                     source_ip_address: self
                         .configuration

@@ -18,7 +18,8 @@
 				"eamodio.gitlens",
 				"stkb.rewrap",
 				"davidanson.vscode-markdownlint",
-				"WakaTime.vscode-wakatime"
+				"WakaTime.vscode-wakatime",
+				"serayuzgur.crates"
 			]
 		}
 	},

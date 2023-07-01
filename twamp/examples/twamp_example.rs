@@ -2,18 +2,9 @@ use std::env;
 use std::fs::File;
 use std::io::Read;
 
-use crate::twamp::Twamp;
-use crate::twamp_light_sender::result::TwampResult;
-
-use ::common::error::CommonError;
-use twamp::TwampConfiguration;
+use common::error::CommonError;
+use twamp::{Twamp, TwampConfiguration, TwampResult};
 use validator::Validate;
-
-mod common;
-mod twamp;
-mod twamp_control;
-mod twamp_light_reflector;
-mod twamp_light_sender;
 
 #[derive(Debug)]
 struct App {

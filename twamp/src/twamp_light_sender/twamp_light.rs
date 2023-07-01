@@ -12,12 +12,10 @@ use common::{
     Strategy,
 };
 
-#[cfg(target_os = "macos")]
-use common::kevent_loop::MacOSEventLoop as EventLoop;
 use message_macro::BeBytes;
 
-use crate::common::message::{ErrorEstimate, ReflectedMessage, SenderMessage};
-use crate::common::{session::Session, MIN_UNAUTH_PADDING};
+use crate::twamp_common::message::{ErrorEstimate, ReflectedMessage, SenderMessage};
+use crate::twamp_common::{session::Session, MIN_UNAUTH_PADDING};
 use crate::twamp_light_sender::Configuration as TwampLightConfiguration;
 use core::time::Duration;
 use std::{cell::RefCell, os::fd::IntoRawFd, rc::Rc, sync::atomic::Ordering};
@@ -51,7 +49,7 @@ impl TwampLight {
         }
     }
 
-    fn create_socket(&mut self) -> Result<TimestampedUdpSocket, crate::CommonError> {
+    fn create_socket(&mut self) -> Result<TimestampedUdpSocket, CommonError> {
         let socket = mio::net::UdpSocket::bind(self.source_ip_address.parse().unwrap()).unwrap();
         let mut my_socket = TimestampedUdpSocket::new(socket.into_raw_fd());
 
@@ -64,8 +62,8 @@ impl TwampLight {
         Ok(my_socket)
     }
 }
-impl Strategy<TwampResult, crate::CommonError> for TwampLight {
-    fn execute(&mut self) -> Result<TwampResult, crate::CommonError> {
+impl Strategy<TwampResult, CommonError> for TwampLight {
+    fn execute(&mut self) -> Result<TwampResult, CommonError> {
         // Create the sessions vector
         let sessions = self
             .hosts
