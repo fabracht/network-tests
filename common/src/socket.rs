@@ -77,7 +77,7 @@ pub trait Socket<'a, T: AsRawFd>: Sized + AsRawFd {
             &value.unwrap_or(0) as *const std::ffi::c_int as *const std::ffi::c_void,
             std::mem::size_of_val(&value) as libc::socklen_t
         ))
-        .map_err(|e| CommonError::Io(e))?;
+        .map_err(CommonError::Io)?;
         log::debug!("setsockopt:level {}, name {}, res {}", level, name, res);
         Ok(res)
     }
@@ -85,14 +85,14 @@ pub trait Socket<'a, T: AsRawFd>: Sized + AsRawFd {
     fn set_fcntl_options(&self) -> Result<(), CommonError> {
         // Get current flags
         let flags =
-            libc_call!(fcntl(self.as_raw_fd(), libc::F_GETFL)).map_err(|e| CommonError::Io(e))?;
+            libc_call!(fcntl(self.as_raw_fd(), libc::F_GETFL)).map_err(CommonError::Io)?;
 
         // Add O_NONBLOCK and O_CLOEXEC to the flags
         let new_flags = flags | libc::O_NONBLOCK | libc::O_CLOEXEC;
 
         // Set the new flags
         let _res = libc_call!(fcntl(self.as_raw_fd(), libc::F_SETFL, new_flags))
-            .map_err(|e| CommonError::Io(e))?;
+            .map_err(CommonError::Io)?;
 
         Ok(())
     }

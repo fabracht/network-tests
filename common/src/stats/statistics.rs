@@ -99,7 +99,7 @@ impl OrderStatisticsTree {
         }
     }
 
-    pub fn iter<'a>(&'a self, traversal_order: TraversalOrder) -> TreeIterator<'a> {
+    pub fn iter(&self, traversal_order: TraversalOrder) -> TreeIterator<'_> {
         TreeIterator::new(self, traversal_order)
     }
 
@@ -143,7 +143,7 @@ impl OrderStatisticsTree {
                     return node.left.take();
                 } else {
                     let right = node.right.take().unwrap();
-                    let (successor, right) = self.pop_min(Some(right.to_owned()));
+                    let (successor, right) = self.pop_min(Some(right));
                     let mut new_node = Box::new(Node {
                         value: successor.value,
                         size: node.size() - 1,
