@@ -1,4 +1,4 @@
-pub use message_macro_derive::BeBytes;
+pub use bebytes_derive::BeBytes;
 
 pub trait BeBytes {
     fn field_size(&self) -> usize;

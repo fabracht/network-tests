@@ -54,6 +54,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "bebytes_derive"
+version = "0.2.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.22",
+]
+
+[[package]]
 name = "bitflags"
 version = "1.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -334,18 +343,9 @@ checksum = "2dffe52ecf27772e601905b7522cb4ef790d2cc203488bbd0e2fe85fcb74566d"
 name = "message_macro"
 version = "0.1.0"
 dependencies = [
- "message_macro_derive",
+ "bebytes_derive",
  "test-case",
  "trybuild",
-]
-
-[[package]]
-name = "message_macro_derive"
-version = "0.1.2"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.22",
 ]
 
 [[package]]
