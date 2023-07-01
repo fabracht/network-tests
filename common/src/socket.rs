@@ -9,7 +9,7 @@ use std::os::fd::{AsRawFd, RawFd};
 pub trait Socket<'a, T: AsRawFd>: Sized + AsRawFd {
     /// Creates a new instance of the socket from the given raw file descriptor.
     ///
-    /// #Safety
+    /// # Safety
     ///
     /// When implementing this, you have to make sure the file descriptor is valid
     unsafe fn from_raw_fd(fd: RawFd) -> T;
@@ -84,8 +84,7 @@ pub trait Socket<'a, T: AsRawFd>: Sized + AsRawFd {
 
     fn set_fcntl_options(&self) -> Result<(), CommonError> {
         // Get current flags
-        let flags =
-            libc_call!(fcntl(self.as_raw_fd(), libc::F_GETFL)).map_err(CommonError::Io)?;
+        let flags = libc_call!(fcntl(self.as_raw_fd(), libc::F_GETFL)).map_err(CommonError::Io)?;
 
         // Add O_NONBLOCK and O_CLOEXEC to the flags
         let new_flags = flags | libc::O_NONBLOCK | libc::O_CLOEXEC;

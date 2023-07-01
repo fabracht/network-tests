@@ -228,7 +228,7 @@ impl OrderStatisticsTree {
         (min, Some(node))
     }
 
-    fn min_node<'a>(&'a self, node: &'a Box<Node>) -> &Box<Node> {
+    fn min_node<'a>(&'a self, node: &'a Node) -> &Node {
         match node.left {
             Some(ref left) => self.min_node(left),
             None => node,
@@ -236,21 +236,21 @@ impl OrderStatisticsTree {
     }
 
     pub fn rank(&self, value: f64) -> usize {
-        self.rank_node(self.root.as_ref(), value)
+        self.rank_node(self.root.as_deref(), value)
     }
 
-    fn rank_node(&self, node: Option<&Box<Node>>, value: f64) -> usize {
+    fn rank_node(&self, node: Option<&Node>, value: f64) -> usize {
         match node {
             Some(node) => {
                 if value < node.value {
-                    self.rank_node(node.left.as_ref(), value)
+                    self.rank_node(node.left.as_deref(), value)
                 } else if value > node.value {
                     node.left.as_ref().map_or(0, |node| node.size())
                         + 1
-                        + self.rank_node(node.right.as_ref(), value)
+                        + self.rank_node(node.right.as_deref(), value)
                 } else {
                     node.left.as_ref().map_or(0, |node| node.size())
-                        + self.rank_node(node.right.as_ref(), value)
+                        + self.rank_node(node.right.as_deref(), value)
                         + 1
                 }
             }
@@ -259,18 +259,18 @@ impl OrderStatisticsTree {
     }
 
     pub fn select(&self, rank: usize) -> Option<f64> {
-        self.select_node(self.root.as_ref(), rank)
+        self.select_node(self.root.as_deref(), rank)
             .map(|node| node.value)
     }
 
-    fn select_node<'a>(&'a self, node: Option<&'a Box<Node>>, rank: usize) -> Option<&Box<Node>> {
+    fn select_node<'a>(&'a self, node: Option<&'a Node>, rank: usize) -> Option<&Node> {
         match node {
             Some(node) => {
                 let left_size = node.left.as_ref().map_or(0, |node| node.size());
                 match rank.cmp(&left_size) {
-                    std::cmp::Ordering::Less => self.select_node(node.left.as_ref(), rank),
+                    std::cmp::Ordering::Less => self.select_node(node.left.as_deref(), rank),
                     std::cmp::Ordering::Greater => {
-                        self.select_node(node.right.as_ref(), rank - left_size - 1)
+                        self.select_node(node.right.as_deref(), rank - left_size - 1)
                     }
                     std::cmp::Ordering::Equal => Some(node),
                 }
@@ -280,7 +280,7 @@ impl OrderStatisticsTree {
     }
 
     pub fn mean(&self) -> f64 {
-        let sum = self.sum(self.root.as_ref());
+        let sum = self.sum(self.root.as_deref());
         let mean = sum / self.size() as f64;
         if mean.is_nan() {
             0.0
@@ -289,11 +289,11 @@ impl OrderStatisticsTree {
         }
     }
 
-    pub fn sum(&self, node: Option<&Box<Node>>) -> f64 {
+    pub fn sum(&self, node: Option<&Node>) -> f64 {
         match node {
             Some(node) => {
-                let left_sum = self.sum(node.left.as_ref());
-                let right_sum = self.sum(node.right.as_ref());
+                let left_sum = self.sum(node.left.as_deref());
+                let right_sum = self.sum(node.right.as_deref());
                 node.value + left_sum + right_sum
             }
             None => 0.0,
@@ -302,15 +302,15 @@ impl OrderStatisticsTree {
 
     pub fn variance(&self) -> f64 {
         let mean = self.mean();
-        let sum_squares = self.sum_squares(self.root.as_ref());
+        let sum_squares = self.sum_squares(self.root.as_deref());
         sum_squares / self.size() as f64 - mean.powi(2)
     }
 
-    pub fn sum_squares(&self, node: Option<&Box<Node>>) -> f64 {
+    pub fn sum_squares(&self, node: Option<&Node>) -> f64 {
         match node {
             Some(node) => {
-                let left_sum = OrderStatisticsTree::sum_squares(self, node.left.as_ref());
-                let right_sum = OrderStatisticsTree::sum_squares(self, node.right.as_ref());
+                let left_sum = OrderStatisticsTree::sum_squares(self, node.left.as_deref());
+                let right_sum = OrderStatisticsTree::sum_squares(self, node.right.as_deref());
                 node.value.powi(2) + left_sum + right_sum
             }
             None => 0.0,
@@ -503,9 +503,9 @@ mod tests {
 
         assert_eq!(tree.select(5), Some(70.0));
         assert_eq!(tree.mean(), 50.0);
-        assert_eq!(tree.sum(tree.root.as_ref()), 350.0);
+        assert_eq!(tree.sum(tree.root.as_deref()), 350.0);
         assert_eq!(tree.variance(), 400.0);
-        assert_eq!(tree.sum_squares(tree.root.as_ref()), 20_300.0);
+        assert_eq!(tree.sum_squares(tree.root.as_deref()), 20_300.0);
         assert_eq!(tree.std_dev(), 20.0);
         assert_eq!(tree.median(), Some(50.0));
         assert_eq!(tree.percentile(25.0), Some(35.0));
@@ -574,7 +574,7 @@ mod tests {
             tree.insert(*value);
         }
         let size = tree.size();
-        let sum = tree.sum(tree.root.as_ref());
+        let sum = tree.sum(tree.root.as_deref());
         let mean = tree.mean();
         let variance = tree.variance();
         let std_dev = tree.std_dev();
