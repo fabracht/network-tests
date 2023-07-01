@@ -21,6 +21,13 @@ pub enum CommonError {
     ValidationError(validator::ValidationErrors),
     SendError(String),
     IterError(String),
+    SocketCreateFailed(std::io::Error),
+    SocketConnectFailed(std::io::Error),
+    SocketBindFailed(std::io::Error),
+    SocketListenFailed(std::io::Error),
+    SocketAcceptFailed(std::io::Error),
+    SocketGetPeerName(std::io::Error),
+    UnknownAddressFamily,
 }
 
 impl Display for CommonError {
@@ -43,6 +50,25 @@ impl Display for CommonError {
                 write!(f, "Failed to iterate: {}", e)
             }
             CommonError::Generic(e) => write!(f, "We've entered uncharted waters: {}", e),
+            CommonError::SocketCreateFailed(e) => {
+                write!(f, "Failed to create Socket: {}", e)
+            }
+            CommonError::SocketConnectFailed(e) => {
+                write!(f, "Failed to connect to address: {}", e)
+            }
+            CommonError::SocketBindFailed(e) => {
+                write!(f, "Failed to bind Socket to provided address: {}", e)
+            }
+            CommonError::SocketListenFailed(e) => {
+                write!(f, "Failed to call listen on socket: {}", e)
+            }
+            CommonError::SocketAcceptFailed(e) => {
+                write!(f, "Failed to accept TCP connection: {}", e)
+            }
+            CommonError::SocketGetPeerName(e) => {
+                write!(f, "Failed to get peer socket address: {}", e)
+            }
+            CommonError::UnknownAddressFamily => write!(f, "Failed to match address family"),
         }
     }
 }

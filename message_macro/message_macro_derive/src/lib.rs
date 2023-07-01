@@ -512,7 +512,7 @@ pub fn derive_be_bytes(input: TokenStream) -> TokenStream {
                         pub fn new(#(#constructor_arg_list,)*) -> Result<Self, Box<dyn std::error::Error>> {
                             #(#field_limit_check)*
                             Ok(Self {
-                                #( #struct_field_names: #struct_field_names, )*
+                                #( #struct_field_names, )*
                             })
                         }
 

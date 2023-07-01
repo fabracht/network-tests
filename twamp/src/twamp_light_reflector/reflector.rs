@@ -15,7 +15,7 @@ use ::common::{error::CommonError, socket::Socket, Strategy, TestResult};
 use common::{
     event_loop::{EventLoopTrait, Itimerspec},
     time::{DateTime, NtpTimestamp},
-    udp_socket::{set_timestamping_options, TimestampedUdpSocket},
+    udp_socket::TimestampedUdpSocket,
 };
 
 use crate::{twamp_common::message::SenderMessage, twamp_light_sender::result::TwampResult};
@@ -36,10 +36,8 @@ impl Reflector {
         let socket = mio::net::UdpSocket::bind(self.configuration.source_ip_address.parse()?)?;
         let mut my_socket = TimestampedUdpSocket::new(socket.into_raw_fd());
         my_socket.set_fcntl_options()?;
-        #[cfg(target_os = "linux")]
         my_socket.set_socket_options(libc::SOL_IP, libc::IP_RECVERR, Some(1))?;
-
-        set_timestamping_options(&mut my_socket)?;
+        my_socket.set_timestamping_options()?;
 
         Ok(my_socket)
     }

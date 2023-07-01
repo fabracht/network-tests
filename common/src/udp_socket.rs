@@ -1,4 +1,4 @@
-use libc::{fcntl, iovec, msghdr, recvfrom, sa_family_t, sendmsg, sockaddr_in, timespec};
+use libc::{iovec, msghdr, recvfrom, sa_family_t, sendmsg, sockaddr_in, timespec};
 use message_macro::BeBytes;
 
 use std::os::fd::{AsRawFd, RawFd};
@@ -11,6 +11,13 @@ use std::{
 use crate::error::CommonError;
 use crate::socket::Socket;
 use crate::time::DateTime;
+
+#[repr(C)]
+pub struct ScmTimestamping {
+    pub ts_realtime: libc::timespec,
+    pub ts_mono: libc::timespec,
+    pub ts_raw: libc::timespec,
+}
 
 pub struct TimestampedUdpSocket {
     inner: RawFd,
@@ -45,49 +52,6 @@ impl Deref for TimestampedUdpSocket {
 impl TimestampedUdpSocket {
     pub fn new(socket: RawFd) -> Self {
         Self { inner: socket }
-    }
-
-    pub fn set_fcntl_options(&self) -> Result<(), std::io::Error> {
-        unsafe {
-            // Get current flags
-            let flags = fcntl(self.as_raw_fd(), libc::F_GETFL);
-            if flags == -1 {
-                return Err(std::io::Error::last_os_error());
-            }
-
-            // Add O_NONBLOCK and O_CLOEXEC to the flags
-            let new_flags = flags | libc::O_NONBLOCK | libc::O_CLOEXEC;
-
-            // Set the new flags
-            let res = fcntl(self.as_raw_fd(), libc::F_SETFL, new_flags);
-            if res == -1 {
-                return Err(std::io::Error::last_os_error());
-            }
-        }
-
-        Ok(())
-    }
-
-    pub fn set_socket_options(
-        &mut self,
-        level: i32,
-        name: i32,
-        value: Option<i32>,
-    ) -> Result<(), CommonError> {
-        // mem::size_of_val(&one) as libc::socklen_t
-        // std::mem::size_of::<std::ffi::c_int>() as u32,
-
-        let _res = unsafe {
-            libc::setsockopt(
-                self.inner,
-                level,
-                name,
-                &value.unwrap_or(0) as *const std::ffi::c_int as *const std::ffi::c_void,
-                std::mem::size_of_val(&value) as libc::socklen_t,
-            )
-        };
-        log::debug!("setsockopt:level {}, name {}, res {:?}", level, name, _res);
-        Ok(())
     }
 
     pub fn receive_errors(&mut self) -> Result<Vec<(usize, SocketAddr, DateTime)>, CommonError> {
@@ -247,9 +211,10 @@ impl TimestampedUdpSocket {
 }
 
 impl<'a> Socket<'a, TimestampedUdpSocket> for TimestampedUdpSocket {
-    fn from_raw_fd(fd: RawFd) -> TimestampedUdpSocket {
+    unsafe fn from_raw_fd(fd: RawFd) -> TimestampedUdpSocket {
         Self { inner: fd }
     }
+
     fn send(&self, _buffer: impl BeBytes) -> Result<(usize, DateTime), CommonError> {
         todo!()
     }
@@ -312,14 +277,6 @@ impl<'a> Socket<'a, TimestampedUdpSocket> for TimestampedUdpSocket {
             sin_port: 0,
             sin_addr: libc::in_addr { s_addr: 0 },
             sin_zero: [0; 8],
-        };
-        #[cfg(target_os = "macos")]
-        let mut sockaddr = sockaddr_in {
-            sin_family: libc::AF_INET as sa_family_t,
-            sin_port: 0,
-            sin_addr: libc::in_addr { s_addr: 0 },
-            sin_zero: [0; 8],
-            sin_len: core::mem::size_of::<libc::sockaddr_in>() as u8,
         };
 
         let fd = self.as_raw_fd();
@@ -394,19 +351,4 @@ pub fn _print_bytes(data: &[u8]) {
 
 fn _is_printable(byte: u8) -> bool {
     (0x20..=0x7E).contains(&byte)
-}
-
-#[repr(C)]
-pub struct ScmTimestamping {
-    pub ts_realtime: libc::timespec,
-    pub ts_mono: libc::timespec,
-    pub ts_raw: libc::timespec,
-}
-
-#[cfg(target_os = "linux")]
-pub fn set_timestamping_options(socket: &mut TimestampedUdpSocket) -> Result<(), CommonError> {
-    let value = libc::SOF_TIMESTAMPING_SOFTWARE
-        | libc::SOF_TIMESTAMPING_RX_SOFTWARE
-        | libc::SOF_TIMESTAMPING_TX_SOFTWARE;
-    socket.set_socket_options(libc::SOL_SOCKET, libc::SO_TIMESTAMPING, Some(value as i32))
 }
