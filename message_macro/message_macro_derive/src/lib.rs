@@ -134,7 +134,7 @@ pub fn derive_be_bytes(input: TokenStream) -> TokenStream {
                                     });
                                 });
                                 field_writing.push(quote! {
-                                    if (#field_name as #field_type) & !(#mask as #field_type) != 0 {
+                                    if (#field_name) & !(#mask as #field_type) != 0 {
                                         panic!(
                                             "Value {} for field {} exceeds the maximum allowed value {}.",
                                             #field_name,
@@ -176,17 +176,15 @@ pub fn derive_be_bytes(input: TokenStream) -> TokenStream {
                                 });
                             } else {
                                 field_parsing.push(quote! {
-                                    // println!("{} byte_index: {} bit_sum: {}", stringify!(#field_name), #u8_byte_index, bit_sum);
                                     bit_sum += #size;
                                     let shift_factor = 8 - #total_size % 8;
     
-                                    let #field_name = ((bytes[#u8_byte_index] as #field_type) >> (7 - (#size + #pos % 8 - 1) as #field_type )) & (#mask as #field_type);
-                                    // println!("Byte: {:08b}, Shift {}, Shifted {:08b}, Mask: {:08b}, Masked {:08b}", bytes[#u8_byte_index] as #field_type, 7 - (#size + #pos - 1), ((bytes[#u8_byte_index] as #field_type) >> (7 - (#size + #pos - 1) as #field_type )), #mask as #field_type, #field_name);
+                                    let #field_name = (bytes[#u8_byte_index]  >> (7 - (#size + #pos % 8 - 1) as #field_type )) & (#mask as #field_type);
                                 });
 
                                 // add the writing code for the field
                                 field_writing.push(quote! {
-                                    if (#field_name as #field_type) & !(#mask as #field_type) != 0 {
+                                    if (#field_name) & !(#mask as #field_type) != 0 {
                                         panic!(
                                             "Value {} for field {} exceeds the maximum allowed value {}.",
                                             #field_name,
@@ -489,7 +487,7 @@ pub fn derive_be_bytes(input: TokenStream) -> TokenStream {
                             let mut end_byte_index = 0;
                             #(#field_parsing)*
                             Ok((Self {
-                                #( #struct_field_names: #struct_field_names, )*
+                                #( #struct_field_names, )*
                             }, bit_sum / 8))
                         }
 

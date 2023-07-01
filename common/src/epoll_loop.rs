@@ -212,9 +212,9 @@ impl<T: AsRawFd + for<'a> Socket<'a, T> + 'static> EventLoopTrait<T> for LinuxEv
                     CommonError::from(format!("Failed to deregister event source: {}", e))
                 })?;
         } else {
-            return Err(CommonError::from(format!(
-                "Failed to unregister event source: token not found"
-            )));
+            return Err(CommonError::from(
+                "Failed to unregister event source: token not found".to_string(),
+            ));
         }
         Ok(())
     }
@@ -222,7 +222,7 @@ impl<T: AsRawFd + for<'a> Socket<'a, T> + 'static> EventLoopTrait<T> for LinuxEv
     fn unregister_timed_event_source(&self, token: Token) -> Result<(), CommonError> {
         if let Some((timer_fd, _event_token, _)) = self.timed_sources.get(&token) {
             // Unregister timer_fd
-            let mut timer_source = SourceFd(&timer_fd);
+            let mut timer_source = SourceFd(timer_fd);
             self.poll
                 .registry()
                 .deregister(&mut timer_source)
@@ -230,9 +230,9 @@ impl<T: AsRawFd + for<'a> Socket<'a, T> + 'static> EventLoopTrait<T> for LinuxEv
                     CommonError::from(format!("Failed to deregister timed event source: {}", e))
                 })?;
         } else {
-            return Err(CommonError::from(format!(
-                "Failed to unregister timed event source: token not found"
-            )));
+            return Err(CommonError::from(
+                "Failed to unregister timed event source: token not found".to_string(),
+            ));
         }
         Ok(())
     }

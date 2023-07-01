@@ -90,7 +90,7 @@ impl TimestampedUdpSocket {
                 msgvec.as_mut_ptr(),
                 msgvec.len() as u32,
                 libc::MSG_ERRQUEUE,
-                0 as *mut timespec,
+                std::ptr::null_mut::<timespec>(),
             )
         };
 
@@ -310,45 +310,4 @@ impl<'a> Socket<'a, TimestampedUdpSocket> for TimestampedUdpSocket {
 
         Ok((n as usize, socket_addr, utc_now))
     }
-}
-
-pub fn _print_bytes(data: &[u8]) {
-    for (i, byte) in data.iter().enumerate() {
-        if i % 4 == 0 {
-            if i > 0 {
-                print!("    ");
-                for j in i - 4..i {
-                    if data.get(j).map(|&b| _is_printable(b)).unwrap_or(false) {
-                        print!("{}", data[j] as char);
-                    } else {
-                        print!(".");
-                    }
-                }
-                println!();
-            }
-            print!("{:08x}: ", i);
-        }
-        print!("{:02x} ", byte);
-    }
-
-    let remainder = data.len() % 4;
-    if remainder != 0 {
-        for _ in remainder..4 {
-            print!("   ");
-        }
-        print!("    ");
-        let start = data.len() - remainder;
-        for j in start..data.len() {
-            if _is_printable(data[j]) {
-                print!("{}", data[j] as char);
-            } else {
-                print!(".");
-            }
-        }
-    }
-    println!();
-}
-
-fn _is_printable(byte: u8) -> bool {
-    (0x20..=0x7E).contains(&byte)
 }

@@ -309,8 +309,8 @@ impl OrderStatisticsTree {
     pub fn sum_squares(&self, node: Option<&Box<Node>>) -> f64 {
         match node {
             Some(node) => {
-                let left_sum = self.sum_squares(node.left.as_ref());
-                let right_sum = self.sum_squares(node.right.as_ref());
+                let left_sum = OrderStatisticsTree::sum_squares(self, node.left.as_ref());
+                let right_sum = OrderStatisticsTree::sum_squares(self, node.right.as_ref());
                 node.value.powi(2) + left_sum + right_sum
             }
             None => 0.0,
@@ -362,9 +362,9 @@ impl OrderStatisticsTree {
         self.root.as_ref().map(|node| self.max_node(node).value)
     }
 
-    fn max_node<'a>(&'a self, node: &'a Box<Node>) -> &Box<Node> {
+    fn max_node<'a>(&'a self, node: &'a Node) -> &Node {
         match node.right {
-            Some(ref right) => self.max_node(right),
+            Some(ref right) => OrderStatisticsTree::max_node(self, right),
             None => node,
         }
     }

@@ -356,9 +356,7 @@ impl<'a> Socket<'a, TimestampedTcpSocket> for TimestampedTcpSocket {
             )
         } == -1
         {
-            return Err(CommonError::SocketGetPeerName(
-                io::Error::last_os_error().into(),
-            ));
+            return Err(CommonError::SocketGetPeerName(io::Error::last_os_error()));
         }
 
         let peer_address = match addr_storage.ss_family as libc::c_int {

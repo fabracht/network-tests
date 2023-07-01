@@ -8,6 +8,10 @@ use std::os::fd::{AsRawFd, RawFd};
 /// A trait representing a socket that can send and receive data.
 pub trait Socket<'a, T: AsRawFd>: Sized + AsRawFd {
     /// Creates a new instance of the socket from the given raw file descriptor.
+    ///
+    /// #Safety
+    ///
+    /// When implementing this, you have to make sure the file descriptor is valid
     unsafe fn from_raw_fd(fd: RawFd) -> T;
 
     /// Sends the given message over the socket.

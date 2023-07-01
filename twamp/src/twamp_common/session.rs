@@ -118,10 +118,10 @@ impl Session {
 
     /// Analyzes the packet loss in this session.
     /// Returns a tuple containing the counts of forward, backward, and total lost packets.
-    pub fn analyze_packet_loss<'a>(&'_ self) -> Result<(u32, u32, u32), CommonError> {
+    pub fn analyze_packet_loss(&'_ self) -> Result<(u32, u32, u32), CommonError> {
         let read_lock = self.results.read().map_err(|_| CommonError::Lock)?;
         let mut forward_loss: i32 = 0;
-        let backward_loss;
+
         let mut total_loss = 0;
         let mut results: Vec<PacketResults> = read_lock.iter().cloned().collect();
 
@@ -146,9 +146,8 @@ impl Session {
                 if let Some(last_sender_seq) = last_successful_sender_seq {
                     if let Some(last_reflector_seq) = last_successful_reflector_seq {
                         let current_reflector_seq = current.reflector_seq.unwrap_or(0);
-                        let delta = ((current.sender_seq as i32 - last_sender_seq as i32)
-                            - (current_reflector_seq as i32 - last_reflector_seq as i32))
-                            as i32;
+                        let delta = (current.sender_seq as i32 - last_sender_seq as i32)
+                            - (current_reflector_seq as i32 - last_reflector_seq as i32);
 
                         if delta >= 0 {
                             forward_loss += delta;
@@ -161,7 +160,7 @@ impl Session {
             }
         }
 
-        backward_loss = total_loss - forward_loss;
+        let backward_loss = total_loss - forward_loss;
 
         Ok((forward_loss as u32, backward_loss as u32, total_loss as u32))
     }
