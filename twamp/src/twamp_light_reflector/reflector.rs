@@ -82,7 +82,7 @@ impl Strategy<TwampResult, CommonError> for Reflector {
                     padding: vec![0_u8; twamp_test_message.padding.len() - MIN_UNAUTH_PADDING],
                 };
                 inner_socket.send_to(&socket_address, reflected_message.clone())?;
-                session.add_to_sent(Box::new(reflected_message));
+                session.add_to_sent(Box::new(reflected_message))?;
             } else {
                 // Create session
                 let session = Session::from_socket_address(&socket_address);
@@ -104,7 +104,7 @@ impl Strategy<TwampResult, CommonError> for Reflector {
                 // Send message
                 inner_socket.send_to(&socket_address, reflected_message.clone())?;
                 // Add message results to session
-                session.add_to_sent(Box::new(reflected_message));
+                session.add_to_sent(Box::new(reflected_message))?;
                 // Store session
                 borrowed_sessions.push(session);
             }

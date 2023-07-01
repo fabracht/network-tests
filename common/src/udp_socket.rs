@@ -268,16 +268,6 @@ impl<'a> Socket<'a, TimestampedUdpSocket> for TimestampedUdpSocket {
         match address.ip() {
             IpAddr::V4(ipv4) => {
                 log::debug!("ipv4 address {}", ipv4.to_string());
-                #[cfg(target_os = "macos")]
-                let mut sockaddr = sockaddr_in {
-                    sin_family: libc::AF_INET as u8,
-                    sin_port: address.port().to_be(),
-                    sin_addr: libc::in_addr {
-                        s_addr: u32::from(ipv4).to_be(),
-                    },
-                    sin_zero: [0; 8],
-                    sin_len: core::mem::size_of::<libc::sockaddr_in>() as u8,
-                };
 
                 #[cfg(target_os = "linux")]
                 let mut sockaddr = sockaddr_in {
@@ -287,17 +277,6 @@ impl<'a> Socket<'a, TimestampedUdpSocket> for TimestampedUdpSocket {
                         s_addr: u32::from(ipv4).to_be(),
                     },
                     sin_zero: [0; 8],
-                };
-
-                #[cfg(target_os = "macos")]
-                let msg = libc::msghdr {
-                    msg_name: &mut sockaddr as *mut _ as *mut libc::c_void,
-                    msg_namelen: std::mem::size_of_val(&sockaddr) as u32,
-                    msg_iov: iov.as_ptr() as *mut libc::iovec,
-                    msg_iovlen: iov.len() as i32,
-                    msg_control: std::ptr::null_mut(),
-                    msg_controllen: 0,
-                    msg_flags: 0,
                 };
 
                 #[cfg(target_os = "linux")]
@@ -422,12 +401,6 @@ pub struct ScmTimestamping {
     pub ts_realtime: libc::timespec,
     pub ts_mono: libc::timespec,
     pub ts_raw: libc::timespec,
-}
-
-#[cfg(target_os = "macos")]
-pub fn set_timestamping_options(socket: &mut TimestampedUdpSocket) -> Result<(), CommonError> {
-    let value = 1; // Enable the SO_TIMESTAMP option
-    socket.set_socket_options(libc::SO_TIMESTAMP, Some(value))
 }
 
 #[cfg(target_os = "linux")]

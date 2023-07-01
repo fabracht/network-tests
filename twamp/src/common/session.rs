@@ -15,6 +15,10 @@ use common::{
     time::DateTime,
 };
 
+/// A `Session` represents a communication session with a `Host`.
+/// It maintains a sequence number and a collection of `PacketResults`.
+/// A session also provides several methods for adding new packets to the session,
+/// getting the latest result, and analyzing packet loss.
 #[derive(Debug)]
 pub struct Session {
     pub socket_address: SocketAddr,
@@ -24,16 +28,18 @@ pub struct Session {
 }
 
 impl Session {
-    pub fn new(host: &Host) -> Self {
-        let host = SocketAddr::try_from(host).unwrap();
-        Self {
+    /// Creates a new `Session` from a `Host`.
+    pub fn new(host: &Host) -> Result<Self, CommonError> {
+        let host = SocketAddr::try_from(host)?;
+        Ok(Self {
             socket_address: host,
             seq_number: AtomicU32::new(0),
             results: Rc::new(RwLock::new(Vec::new())),
             last_updated: 0,
-        }
+        })
     }
 
+    /// Creates a new `Session` from a `SocketAddr`.
     pub fn from_socket_address(host: &SocketAddr) -> Self {
         Self {
             socket_address: *host,
@@ -43,8 +49,11 @@ impl Session {
         }
     }
 
+    /// Adds a received packet to the session's results.
+    /// The method finds the matching sent packet by sequence number and updates its fields.
     pub fn add_to_received(&self, message: impl Message, t4: DateTime) -> Result<(), CommonError> {
-        self.results.write()?.iter_mut().for_each(|result| {
+        let mut write_lock = self.results.write()?;
+        write_lock.iter_mut().for_each(|result| {
             let packet_results = message.packet_results();
 
             if result.sender_seq == packet_results.sender_seq {
@@ -57,13 +66,18 @@ impl Session {
         Ok(())
     }
 
-    pub fn add_to_sent(&self, message: Box<dyn Message>) {
+    /// Adds a sent packet to the session's results and increments the sequence number.
+    pub fn add_to_sent(&self, message: Box<dyn Message>) -> Result<(), CommonError> {
         let packet_result = message.packet_results();
 
-        self.results.write().unwrap().push(packet_result);
+        self.results
+            .write()
+            .map(|mut results| results.push(packet_result))?;
         self.seq_number.fetch_add(1, Ordering::Relaxed);
+        Ok(())
     }
 
+    /// Gets the most recent result of this session.
     pub fn get_latest_result(&self) -> Option<TimestampsResult> {
         let results = self.results.write().ok()?;
         let last_result = results.last()?;
@@ -83,6 +97,7 @@ impl Session {
         })
     }
 
+    /// Updates the transmit timestamps for the packet results based on the provided iterator.
     pub fn update_tx_timestamps(
         &mut self,
         mut timestamps: impl Iterator<Item = DateTime>,
@@ -101,6 +116,8 @@ impl Session {
         Ok(())
     }
 
+    /// Analyzes the packet loss in this session.
+    /// Returns a tuple containing the counts of forward, backward, and total lost packets.
     pub fn analyze_packet_loss<'a>(&'_ self) -> Result<(u32, u32, u32), CommonError> {
         let read_lock = self.results.read().map_err(|_| CommonError::Lock)?;
         let mut forward_loss: i32 = 0;
@@ -149,40 +166,53 @@ impl Session {
         Ok((forward_loss as u32, backward_loss as u32, total_loss as u32))
     }
 
+    /// Calculates the GAMLR offset for this session.
+    /// Uses the provided OrderStatisticsTrees for forward and backward One-Way Delay.
     pub fn calculate_gamlr_offset(
         &self,
         f_owd_tree: &OrderStatisticsTree,
         b_owd_tree: &OrderStatisticsTree,
     ) -> Option<f64> {
-        if let Ok(results) = self.results.read() {
-            if results.is_empty() || results.len() < 5 {
-                return None;
-            }
+        let results = self.results.read().ok()?;
 
-            let forward_owd: Vec<f64> = f_owd_tree
-                .iter(common::stats::tree_iterator::TraversalOrder::Inorder)
-                .map(|node| node.value())
-                .collect();
-            let backward_owd: Vec<f64> = b_owd_tree
-                .iter(common::stats::tree_iterator::TraversalOrder::Inorder)
-                .map(|node| node.value())
-                .collect();
-
-            let mut f_offset = 0.0;
-            let mut b_offset = 0.0;
-
-            for slice in forward_owd.chunks(5) {
-                f_offset += estimate(slice.to_owned());
-            }
-            for slice in backward_owd.chunks(5) {
-                b_offset += estimate(slice.to_owned());
-            }
-
-            f_offset /= forward_owd.len() as f64;
-            b_offset /= backward_owd.len() as f64;
-
-            return Some((f_offset - b_offset) / 2.0);
+        if results.is_empty() || results.len() < 5 {
+            return None;
         }
-        None
+
+        let forward_owd: Vec<f64> = f_owd_tree
+            .iter(common::stats::tree_iterator::TraversalOrder::Inorder)
+            .map(|node| node.value())
+            .collect();
+        let backward_owd: Vec<f64> = b_owd_tree
+            .iter(common::stats::tree_iterator::TraversalOrder::Inorder)
+            .map(|node| node.value())
+            .collect();
+
+        // Ensure that we have complete chunks for the estimate
+        let f_chunks: Vec<_> = forward_owd
+            .chunks(5)
+            .filter(|chunk| chunk.len() == 5)
+            .collect();
+        let f_len = f_chunks.len();
+        let b_chunks: Vec<_> = backward_owd
+            .chunks(5)
+            .filter(|chunk| chunk.len() == 5)
+            .collect();
+        let b_len = b_chunks.len();
+
+        let mut f_offset = 0.0;
+        let mut b_offset = 0.0;
+
+        for slice in f_chunks {
+            f_offset += estimate(slice.to_owned());
+        }
+        for slice in b_chunks {
+            b_offset += estimate(slice.to_owned());
+        }
+
+        f_offset /= f_len as f64;
+        b_offset /= b_len as f64;
+
+        Some((f_offset - b_offset) / 2.0)
     }
 }

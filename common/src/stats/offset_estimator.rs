@@ -193,7 +193,6 @@ fn estimate_offset(x_sort: &[f64], y: &[f64]) -> f64 {
     };
 
     // Find the point where the regression line crosses the x-axis (y = 0)
-
     // Return the estimated offset (x_cross).
     -gamma / beta
 }

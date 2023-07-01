@@ -70,7 +70,7 @@ impl Strategy<TwampResult, crate::CommonError> for TwampLight {
         let sessions = self
             .hosts
             .iter()
-            .map(Session::new)
+            .filter_map(|host| Session::new(host).ok())
             .collect::<Vec<Session>>();
         let rc_sessions = Rc::new(RefCell::new(sessions));
 
@@ -250,7 +250,7 @@ fn create_tx_callback(
             .borrow()
             .iter()
             .zip(timestamps.iter())
-            .for_each(|(session, timestamp)| {
+            .try_for_each(|(session, timestamp)| {
                 let twamp_test_message = SenderMessage {
                     sequence_number: session.seq_number.load(Ordering::SeqCst),
                     timestamp: NtpTimestamp::from(*timestamp),
@@ -258,7 +258,7 @@ fn create_tx_callback(
                     padding: Vec::new(),
                 };
                 session.add_to_sent(Box::new(twamp_test_message))
-            });
+            })?;
         Ok(0)
     })?;
     Ok(0)
