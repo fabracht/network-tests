@@ -567,8 +567,6 @@ mod tests {
 
     #[test]
     fn test_stats() {
-        env_logger::init();
-
         let values = vec![1.0, 3.0, 2.0, 4.0, 5.0];
         let mut tree = OrderStatisticsTree::new();
 

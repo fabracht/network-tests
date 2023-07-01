@@ -417,7 +417,6 @@ fn _is_printable(byte: u8) -> bool {
     (0x20..=0x7E).contains(&byte)
 }
 
-#[derive(Debug)]
 #[repr(C)]
 pub struct ScmTimestamping {
     pub ts_realtime: libc::timespec,
