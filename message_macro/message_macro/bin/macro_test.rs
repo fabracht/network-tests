@@ -130,11 +130,13 @@ pub enum DummyEnum {
 #[derive(BeBytes, Debug, PartialEq, Clone)]
 pub struct DummyStruct {
     pub dummy0: [u8; 2],
-    pub dummy1: u32,
-    pub dummy2: u32,
+    #[U8(size(1), pos(0))]
+    pub dummy1: u8,
+    #[U8(size(7), pos(1))]
+    pub dummy2: u8,
 }
 
-#[derive(BeBytes, Debug, PartialEq)]
+#[derive(BeBytes, Debug, PartialEq, Clone)]
 pub struct ErrorEstimate {
     #[U8(size(1), pos(0))]
     pub s_bit: u8,
@@ -155,4 +157,10 @@ pub struct ErrorEstimateMini {
     #[U8(size(6), pos(2))]
     pub scale: u8,
     pub multiplier: u32,
+}
+
+#[derive(BeBytes, Debug, PartialEq)]
+pub struct NestedStruct {
+    pub dummy_struct: DummyStruct,
+    pub error_estimate: ErrorEstimate,
 }
