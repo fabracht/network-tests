@@ -37,7 +37,7 @@ Here's an example showcasing the usage of the BeBytes Derive:
 ```rust
 use message_macro_derive::BeBytes;
 
-#[derive(BeBytes)]
+#[derive(Debug, BeBytes)]
 struct MyStruct {
     #[U8(size(1), pos(0))]
     field1: u8,
@@ -56,7 +56,7 @@ fn main() {
     let bytes = my_struct.to_be_bytes();
     println!("Serialized bytes: {:?}", bytes);
 
-    let deserialized = MyStruct::try_from_be_bytes(&bytes).unwrap().0;
+    let deserialized = MyStruct::try_from_be_bytes(&bytes).unwrap();
     println!("Deserialized struct: {:?}", deserialized);
 }
 ```
