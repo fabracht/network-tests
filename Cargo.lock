@@ -55,7 +55,7 @@ dependencies = [
 
 [[package]]
 name = "bebytes_derive"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "proc-macro2",
  "quote",
