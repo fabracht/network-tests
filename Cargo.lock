@@ -55,7 +55,9 @@ dependencies = [
 
 [[package]]
 name = "bebytes_derive"
-version = "0.2.4"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "36f75122ceed102b9b0dd9ce365920f26fddb1a4e88646a04c4995dde876bc6a"
 dependencies = [
  "proc-macro2",
  "quote",

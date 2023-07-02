@@ -10,7 +10,7 @@ name = "macro_test"
 path = "./bin/macro_test.rs"
 
 [dependencies]
-bebytes_derive = { path = "../bebytes_derive" }
+bebytes_derive = "0.2"
 
 [dev-dependencies]
 trybuild = { version = "1.0.49", features = ["diff"] }
