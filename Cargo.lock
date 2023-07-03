@@ -381,6 +381,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "network_commons"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7c0819bc44f889de1797ee102fbf8c06a7afc9cce67f14318914d1476f8e704c"
+dependencies = [
+ "bebytes 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libc",
+ "log",
+ "mio",
+ "serde",
+ "serde_json",
+ "serde_yaml 0.9.22",
+ "thiserror",
+ "validator",
+]
+
+[[package]]
 name = "num-traits"
 version = "0.2.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -742,7 +759,7 @@ dependencies = [
  "log",
  "log4rs",
  "mio",
- "network_commons",
+ "network_commons 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde",
  "serde_json",
  "serde_yaml 0.9.22",

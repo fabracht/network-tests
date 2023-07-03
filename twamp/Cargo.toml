@@ -20,7 +20,7 @@ serde_yaml = "0.9"
 serde_json = "1.0"
 thiserror = "1.0"
 validator = { version = "0.16", features = ["derive"] }
-network_commons = { path = "../network_commons" }
+network_commons = "0.1"
 bebytes = "0.1"
 
 [dev-dependencies]
