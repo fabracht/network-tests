@@ -1,4 +1,4 @@
-use message_macro::BeBytes;
+use bebytes::BeBytes;
 fn main() {
     let error_estimate = ErrorEstimateMini {
         s_bit: 1,

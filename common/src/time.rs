@@ -1,9 +1,9 @@
 use crate::error::CommonError;
+use bebytes::BeBytes;
 use core::fmt::{self};
 use core::ops::{Add, Sub};
 use core::time::Duration;
 use libc::{clock_gettime, gmtime, localtime, time, time_t, timespec, tm, CLOCK_REALTIME};
-use message_macro::BeBytes;
 use serde::{Deserialize, Serialize, Serializer};
 use std::time::SystemTime;
 

@@ -1,5 +1,5 @@
+use bebytes::BeBytes;
 use libc::{iovec, msghdr, recvfrom, sa_family_t, sendmsg, sockaddr_in, timespec};
-use message_macro::BeBytes;
 
 use std::os::fd::{AsRawFd, RawFd};
 use std::{

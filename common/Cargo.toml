@@ -15,4 +15,4 @@ serde_yaml = "0.9"
 serde_json = "1.0"
 thiserror = "1.0"
 validator = { version = "0.16", features = ["derive"] }
-message_macro = { path = "../message_macro/message_macro" }
+bebytes = { path = "../message_macro/bebytes" }

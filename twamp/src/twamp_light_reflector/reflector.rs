@@ -5,9 +5,9 @@ use crate::twamp_common::MIN_UNAUTH_PADDING;
 #[cfg(target_os = "linux")]
 use common::epoll_loop::LinuxEventLoop as EventLoop;
 
+use bebytes::BeBytes;
 #[cfg(target_os = "macos")]
 use common::kevent_loop::MacOSEventLoop as EventLoop;
-use message_macro::BeBytes;
 
 use std::{cell::RefCell, os::fd::IntoRawFd, rc::Rc, sync::atomic::Ordering, time::Duration};
 

@@ -54,6 +54,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "bebytes"
+version = "0.1.0"
+dependencies = [
+ "bebytes_derive 0.2.7 (registry+https://github.com/rust-lang/crates.io-index)",
+ "test-case",
+ "trybuild",
+]
+
+[[package]]
 name = "bebytes_derive"
 version = "0.2.7"
 dependencies = [
@@ -116,9 +125,9 @@ dependencies = [
 name = "common"
 version = "0.1.0"
 dependencies = [
+ "bebytes",
  "libc",
  "log",
- "message_macro",
  "mio",
  "serde",
  "serde_json",
@@ -349,15 +358,6 @@ name = "memchr"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2dffe52ecf27772e601905b7522cb4ef790d2cc203488bbd0e2fe85fcb74566d"
-
-[[package]]
-name = "message_macro"
-version = "0.1.0"
-dependencies = [
- "bebytes_derive 0.2.7 (registry+https://github.com/rust-lang/crates.io-index)",
- "test-case",
- "trybuild",
-]
 
 [[package]]
 name = "mio"
@@ -728,11 +728,11 @@ dependencies = [
 name = "twamp"
 version = "0.1.0"
 dependencies = [
+ "bebytes",
  "common",
  "libc",
  "log",
  "log4rs",
- "message_macro",
  "mio",
  "serde",
  "serde_json",
