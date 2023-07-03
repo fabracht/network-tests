@@ -3,7 +3,7 @@ name = "bebytes"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
-repository = "https://github.com/fabracht/network-tests/bebytes"
+repository = "https://github.com/fabracht/network-tests/message_macro/bebytes"
 description = "A Rust library for serialization and deserialization of network structs."
 readme = "README.md"
 keywords = [
@@ -13,7 +13,7 @@ keywords = [
     "bytes",
     "big-endian",
 ]
-categories = ["network-programming", "serialization"]
+
 
 [[bin]]
 name = "macro_test"
