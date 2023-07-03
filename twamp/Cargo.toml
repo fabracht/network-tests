@@ -6,7 +6,6 @@ description = "Network-Tests TWAMP is a Rust project to support network tests us
 authors = ["Fabricio Bracht <fabracht@gmail.com>"]
 license = "MIT"
 repository = "https://github.com/fabracht/network-tests"
-readme = "README.md"
 
 
 [dependencies]
