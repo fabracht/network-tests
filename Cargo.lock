@@ -55,7 +55,7 @@ dependencies = [
 
 [[package]]
 name = "bebytes"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "bebytes_derive 0.2.7 (registry+https://github.com/rust-lang/crates.io-index)",
  "test-case",
