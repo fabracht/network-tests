@@ -1,8 +1,8 @@
+use bebytes::BeBytes;
 use common::{
     message::{Message, PacketResults},
     time::{DateTime, NtpTimestamp},
 };
-use message_macro::BeBytes;
 
 /// Unauthenticated TWAMP message as defined
 /// in [RFC4656 Section 4.1.2](https://www.rfc-editor.org/rfc/rfc4656#section-4.1.2)

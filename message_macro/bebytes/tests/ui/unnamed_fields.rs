@@ -1,4 +1,4 @@
-use message_macro::BeBytes;
+use bebytes::BeBytes;
 
 #[derive(BeBytes)]
 enum UnsupportedEnum {

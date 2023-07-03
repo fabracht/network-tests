@@ -1,4 +1,4 @@
-use message_macro::BeBytes;
+use bebytes::BeBytes;
 
 #[derive(BeBytes)]
 struct UnsupportedStruct(u8, u16, u32);

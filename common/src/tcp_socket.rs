@@ -1,5 +1,5 @@
+use bebytes::BeBytes;
 use libc::{sockaddr, sockaddr_in, sockaddr_in6, socklen_t, AF_INET, AF_INET6, MSG_NOSIGNAL};
-use message_macro::BeBytes;
 
 use crate::{socket::Socket, time::DateTime, CommonError};
 use core::ops::Deref;
@@ -309,7 +309,7 @@ impl<'a> Socket<'a, TimestampedTcpSocket> for TimestampedTcpSocket {
     fn send_to(
         &self,
         _address: &SocketAddr,
-        message: impl message_macro::BeBytes,
+        message: impl BeBytes,
     ) -> Result<(usize, crate::time::DateTime), CommonError> {
         // Use the send method to send the data
         self.send(message)

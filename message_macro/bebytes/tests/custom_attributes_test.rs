@@ -1,4 +1,4 @@
-use message_macro::BeBytes;
+use bebytes::BeBytes;
 use test_case::test_case;
 
 #[derive(BeBytes, Debug, PartialEq)]

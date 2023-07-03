@@ -12,7 +12,7 @@ use common::{
     Strategy,
 };
 
-use message_macro::BeBytes;
+use bebytes::BeBytes;
 
 use crate::twamp_common::message::{ErrorEstimate, ReflectedMessage, SenderMessage};
 use crate::twamp_common::{session::Session, MIN_UNAUTH_PADDING};

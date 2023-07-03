@@ -1,11 +1,11 @@
 [package]
 name = "bebytes_derive"
 description = "A macro to generate/parse binary representation of messages"
-version = "0.2.6"
+version = "0.2.7"
 edition = "2021"
 publish = true
 license = "MIT"
-repository = "https://github.com/fabracht/network-tests/tree/main/message_macro/bebytes_derive"
+repository = "https://github.com/fabracht/network-tests/message_macro/bebytes_derive"
 readme = "README.md"
 
 [lib]

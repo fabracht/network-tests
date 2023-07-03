@@ -1,7 +1,7 @@
 use super::error::CommonError;
 use crate::libc_call;
 use crate::time::DateTime;
-use message_macro::BeBytes;
+use bebytes::BeBytes;
 use std::net::SocketAddr;
 use std::os::fd::{AsRawFd, RawFd};
 

@@ -1,2 +1,7 @@
 [workspace]
-members = ["twamp", "common", "message_macro/bebytes_derive"]
+members = [
+    "twamp",
+    "common",
+    "message_macro/bebytes_derive",
+    "message_macro/bebytes",
+]

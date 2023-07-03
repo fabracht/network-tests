@@ -459,7 +459,7 @@ pub fn derive_be_bytes(input: TokenStream) -> TokenStream {
                                     bit_sum -= (predicted_size - bytes_written) * 8;
                                 });
                                 field_writing.push(quote_spanned! { field.span() =>
-                                    bytes.extend_from_slice(&message_macro::BeBytes::to_be_bytes(&#field_name));
+                                    bytes.extend_from_slice(&BeBytes::to_be_bytes(&#field_name));
                                 });
                             }
                             _ => {

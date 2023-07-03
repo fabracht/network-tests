@@ -4,8 +4,8 @@ use crate::twamp_common::message::ServerGreeting;
 use crate::twamp_common::message::ServerStart;
 use crate::TwampLight;
 
+use bebytes::BeBytes;
 use common::{socket::Socket, tcp_socket::TimestampedTcpSocket, time::NtpTimestamp};
-use message_macro::BeBytes;
 
 #[derive(BeBytes, Debug)]
 struct TestMessage {
