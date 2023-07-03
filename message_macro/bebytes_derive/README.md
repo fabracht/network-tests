@@ -43,7 +43,7 @@ struct MyStruct {
     field1: u8,
     #[U8(size(4), pos(1))]
     field2: u8,
-    #[U8(size(5), pos(8))]
+    #[U8(size(3), pos(5))]
     field3: u8,
     field4: u32,
 }
