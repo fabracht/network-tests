@@ -1,7 +1,7 @@
 [workspace]
 members = [
     "twamp",
-    "common",
+    "network_commons",
     "message_macro/bebytes_derive",
     "message_macro/bebytes",
 ]

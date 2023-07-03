@@ -63,6 +63,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "bebytes"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f7f6e81a543fda43b04ad9732962fca66065ecd1acbddcf5f7441aea4a8df571"
+dependencies = [
+ "bebytes_derive 0.2.7 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "bebytes_derive"
 version = "0.2.7"
 dependencies = [
@@ -119,21 +128,6 @@ dependencies = [
  "time",
  "wasm-bindgen",
  "winapi",
-]
-
-[[package]]
-name = "common"
-version = "0.1.0"
-dependencies = [
- "bebytes",
- "libc",
- "log",
- "mio",
- "serde",
- "serde_json",
- "serde_yaml 0.9.22",
- "thiserror",
- "validator",
 ]
 
 [[package]]
@@ -369,6 +363,21 @@ dependencies = [
  "log",
  "wasi 0.11.0+wasi-snapshot-preview1",
  "windows-sys",
+]
+
+[[package]]
+name = "network_commons"
+version = "0.1.0"
+dependencies = [
+ "bebytes 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libc",
+ "log",
+ "mio",
+ "serde",
+ "serde_json",
+ "serde_yaml 0.9.22",
+ "thiserror",
+ "validator",
 ]
 
 [[package]]
@@ -728,12 +737,12 @@ dependencies = [
 name = "twamp"
 version = "0.1.0"
 dependencies = [
- "bebytes",
- "common",
+ "bebytes 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "libc",
  "log",
  "log4rs",
  "mio",
+ "network_commons",
  "serde",
  "serde_json",
  "serde_yaml 0.9.22",

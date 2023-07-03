@@ -1,10 +1,10 @@
 [package]
-name = "common"
+name = "network_commons"
 version = "0.1.0"
 edition = "2021"
-description = "Common code for the server and client"
+description = "Low level code for the server and client applications"
 license = "MIT"
-repository = "https://github.com/fabracht/network-tools"
+repository = "https://github.com/fabracht/network-tests/network-commons"
 
 [dependencies]
 libc = "0.2"
@@ -15,4 +15,4 @@ serde_yaml = "0.9"
 serde_json = "1.0"
 thiserror = "1.0"
 validator = { version = "0.16", features = ["derive"] }
-bebytes = { path = "../message_macro/bebytes" }
+bebytes = "0.1"

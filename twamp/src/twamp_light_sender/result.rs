@@ -1,6 +1,6 @@
 use std::net::SocketAddr;
 
-use common::TestResult;
+use network_commons::TestResult;
 use serde::{Deserialize, Serialize};
 
 use super::NETWORK_PRECISION;

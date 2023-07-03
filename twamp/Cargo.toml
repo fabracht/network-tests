@@ -5,7 +5,7 @@ edition = "2021"
 description = "Network-Tests TWAMP is a Rust project to support network tests used by the industry to monitor network quality and service assurance, currently implementing TWAMP (Two-Way Active Measurement Protocol) Light as per RFC 5357."
 authors = ["Fabricio Bracht <fabracht@gmail.com>"]
 license = "MIT"
-repository = "https://github.com/fabracht/network-tools"
+repository = "https://github.com/fabracht/network-tests"
 
 [lib]
 name = "twamp"
@@ -20,8 +20,8 @@ serde_yaml = "0.9"
 serde_json = "1.0"
 thiserror = "1.0"
 validator = { version = "0.16", features = ["derive"] }
-common = { path = "../common" }
-bebytes = { path = "../message_macro/bebytes" }
+network_commons = { path = "../network_commons" }
+bebytes = "0.1"
 
 [dev-dependencies]
 log4rs = "1.2.0"

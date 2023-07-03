@@ -1,4 +1,4 @@
-use common::host::Host;
+use network_commons::host::Host;
 use serde::{Deserialize, Serialize};
 use validator::Validate;
 

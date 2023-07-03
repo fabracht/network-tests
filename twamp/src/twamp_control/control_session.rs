@@ -5,7 +5,7 @@ use crate::twamp_common::message::ServerStart;
 use crate::TwampLight;
 
 use bebytes::BeBytes;
-use common::{socket::Socket, tcp_socket::TimestampedTcpSocket, time::NtpTimestamp};
+use network_commons::{socket::Socket, tcp_socket::TimestampedTcpSocket, time::NtpTimestamp};
 
 #[derive(BeBytes, Debug)]
 struct TestMessage {

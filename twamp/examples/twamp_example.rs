@@ -2,7 +2,7 @@ use std::env;
 use std::fs::File;
 use std::io::Read;
 
-use common::error::CommonError;
+use network_commons::error::CommonError;
 use twamp::{Twamp, TwampConfiguration, TwampResult};
 use validator::Validate;
 

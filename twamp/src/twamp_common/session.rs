@@ -1,3 +1,11 @@
+use network_commons::stats::tree_iterator::TraversalOrder::Inorder;
+use network_commons::{
+    error::CommonError,
+    host::Host,
+    message::{Message, PacketResults, SessionPackets, TimestampsResult},
+    stats::{offset_estimator::estimate, statistics::OrderStatisticsTree},
+    time::DateTime,
+};
 use std::{
     net::SocketAddr,
     rc::Rc,
@@ -5,14 +13,6 @@ use std::{
         atomic::{AtomicU32, Ordering},
         RwLock,
     },
-};
-
-use common::{
-    error::CommonError,
-    host::Host,
-    message::{Message, PacketResults, SessionPackets, TimestampsResult},
-    stats::{offset_estimator::estimate, statistics::OrderStatisticsTree},
-    time::DateTime,
 };
 
 /// A `Session` represents a communication session with a `Host`.
@@ -178,14 +178,8 @@ impl Session {
             return None;
         }
 
-        let forward_owd: Vec<f64> = f_owd_tree
-            .iter(common::stats::tree_iterator::TraversalOrder::Inorder)
-            .map(|node| node.value())
-            .collect();
-        let backward_owd: Vec<f64> = b_owd_tree
-            .iter(common::stats::tree_iterator::TraversalOrder::Inorder)
-            .map(|node| node.value())
-            .collect();
+        let forward_owd: Vec<f64> = f_owd_tree.iter(Inorder).map(|node| node.value()).collect();
+        let backward_owd: Vec<f64> = b_owd_tree.iter(Inorder).map(|node| node.value()).collect();
 
         // Ensure that we have complete chunks for the estimate
         let f_chunks: Vec<_> = forward_owd

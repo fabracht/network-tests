@@ -3,7 +3,7 @@ use crate::twamp_common::message::ReflectedMessage;
 use crate::twamp_common::session::Session;
 use crate::twamp_common::MIN_UNAUTH_PADDING;
 #[cfg(target_os = "linux")]
-use common::epoll_loop::LinuxEventLoop as EventLoop;
+use network_commons::epoll_loop::LinuxEventLoop as EventLoop;
 
 use bebytes::BeBytes;
 #[cfg(target_os = "macos")]
@@ -11,8 +11,8 @@ use common::kevent_loop::MacOSEventLoop as EventLoop;
 
 use std::{cell::RefCell, os::fd::IntoRawFd, rc::Rc, sync::atomic::Ordering, time::Duration};
 
-use ::common::{error::CommonError, socket::Socket, Strategy, TestResult};
-use common::{
+use network_commons::{error::CommonError, socket::Socket, Strategy, TestResult};
+use network_commons::{
     event_loop::{EventLoopTrait, Itimerspec},
     time::{DateTime, NtpTimestamp},
     udp_socket::TimestampedUdpSocket,

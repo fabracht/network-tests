@@ -5,8 +5,8 @@ use crate::twamp_light_reflector::Configuration as ReflectorConfiguration;
 use crate::twamp_light_sender::twamp_light::TwampLight;
 use crate::twamp_light_sender::Configuration as LightConfiguration;
 
-use common::host::Host;
-use common::{error::CommonError, Strategy};
+use network_commons::host::Host;
+use network_commons::{error::CommonError, Strategy};
 use serde::{Deserialize, Serialize};
 pub use twamp_light_sender::result::TwampResult;
 use validator::Validate;
