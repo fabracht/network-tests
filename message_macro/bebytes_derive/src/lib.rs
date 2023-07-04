@@ -83,8 +83,6 @@ pub fn derive_be_bytes(input: TokenStream) -> TokenStream {
                                     return Err(std::boxed::Box::new(err));
                                 }
                             });
-                            // increase the bit sum by the size requested
-                            // u8_bit_sum += size;
                             // check which byte we're in
                             let u8_byte_index = total_size / 8;
 
@@ -452,10 +450,8 @@ pub fn derive_be_bytes(input: TokenStream) -> TokenStream {
                                     byte_index = bit_sum / 8;
                                     let predicted_size = core::mem::size_of::<#field_type>();
                                     end_byte_index = byte_index + predicted_size;
-                                    // println!("{} byte_index: {} bit_sum: {}", stringify!(#field_name), byte_index, bit_sum);
                                     bit_sum += (end_byte_index - byte_index) * 8;
                                     let (#field_name, bytes_written) = #field_type::try_from_be_bytes(&bytes[byte_index..end_byte_index])?;
-                                    // println!("----------  {} bytes_written: {}", stringify!(#field_name), bytes_written);
                                     bit_sum -= (predicted_size - bytes_written) * 8;
                                 });
                                 field_writing.push(quote_spanned! { field.span() =>
