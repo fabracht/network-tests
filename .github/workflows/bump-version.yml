@@ -1,0 +1,41 @@
+name: Bump Version
+
+on:
+  pull_request:
+    types:
+      - closed
+    paths:
+      - 'message_macro/bebytes_derive/**'
+
+jobs:
+  bump_version:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v2
+
+      - name: Extract version component
+        id: extract_version
+        run: |
+          PR_TITLE=${{ github.event.pull_request.title }}
+          VERSION_COMPONENT=$(echo $PR_TITLE | grep -oP '^(major|minor|patch)')
+          if [ -z "$VERSION_COMPONENT" ]; then
+            echo "PR title is not properly formatted or does not contain a semver tag. Please include 'major', 'minor', or 'patch' at the beginning of the title."
+            exit 1
+          fi
+          echo "::set-output name=version_component::$VERSION_COMPONENT"
+
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
+      - name: Install cargo-release
+        run: cargo install cargo-release
+
+      - name: Bump version
+        run: cargo release ${{ steps.extract_version.outputs.version_component }}
+        working-directory: message_macro/bebytes_derive
