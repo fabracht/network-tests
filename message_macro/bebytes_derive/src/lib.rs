@@ -6,7 +6,7 @@ use syn::{
     DeriveInput, Fields, LitInt,
 };
 
-
+// BeBytes makes your bit shifting life a thing of the past
 #[proc_macro_derive(BeBytes, attributes(U8))]
 pub fn derive_be_bytes(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
