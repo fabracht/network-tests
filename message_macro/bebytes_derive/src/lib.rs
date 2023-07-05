@@ -471,6 +471,7 @@ pub fn derive_be_bytes(input: TokenStream) -> TokenStream {
 
                 // Generate the code for the struct
                 let struct_field_names = fields.named.iter().map(|f| &f.ident).collect::<Vec<_>>();
+                // Generate the code for the constructor
                 let constructor_arg_list = fields.named.iter().map(|f| {
                     let field_ident = &f.ident;
                     let field_type = &f.ty;
