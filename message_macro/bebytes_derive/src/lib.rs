@@ -534,7 +534,6 @@ pub fn derive_be_bytes(input: TokenStream) -> TokenStream {
             }
         },
         Data::Enum(data_enum) => {
-            // eprintln!("data_enum {:#?}", data_enum);
             let variants = data_enum.variants;
 
             let values = variants
@@ -594,7 +593,7 @@ pub fn derive_be_bytes(input: TokenStream) -> TokenStream {
             };
             expanded.into()
         }
-        _ => {
+        _ => { 
             let error =
                 syn::Error::new(Span::call_site(), "Type is not supported").to_compile_error();
             let output = quote! {
