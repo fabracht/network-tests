@@ -83,7 +83,7 @@ struct WrongStruct {
     field1: u8,
     #[U8(size(4), pos(1))]
     field2: u8,
-    field3: u32,
+    field3: f32,
 }
 ```
 
