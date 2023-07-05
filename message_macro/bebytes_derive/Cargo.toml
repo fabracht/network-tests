@@ -1,7 +1,7 @@
 [package]
 name = "bebytes_derive"
 description = "A macro to generate/parse binary representation of messages with custom bit fields"
-version = "0.2.10"
+version = "0.2.11"
 edition = "2021"
 publish = true
 license = "MIT"
