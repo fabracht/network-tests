@@ -563,7 +563,6 @@ pub fn derive_be_bytes(input: TokenStream) -> TokenStream {
                     Self::#ident => #assigned_value as u8,
                 }
             });
-
             // Generate the code for the enum
             let expanded = quote! {
                 impl #my_trait_path for #name {
