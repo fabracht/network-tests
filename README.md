@@ -19,7 +19,7 @@ The project is divided into workspace projects, and all tests can be run using t
 To run the TWAMP test, use the following command:
 
 ```bash
-cargo run --release --bin twamp -- -c "path_to_configuration_file"
+cargo run --release --example twamp_example -- -c twamp/examples/configurations/sender_config.json
 ```
 
 ### Configuration
