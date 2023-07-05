@@ -162,5 +162,6 @@ pub struct ErrorEstimateMini {
 #[derive(BeBytes, Debug, PartialEq)]
 pub struct NestedStruct {
     pub dummy_struct: DummyStruct,
+    pub optional_number: Option<i32>,
     pub error_estimate: ErrorEstimate,
 }

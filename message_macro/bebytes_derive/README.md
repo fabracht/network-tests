@@ -138,6 +138,21 @@ pub enum DummyEnum {
 }
 ```
 
+## Options
+
+Options are supported, as long as the internal type is a primitive
+Example:
+
+```rust
+#[derive(BeBytes, Debug, PartialEq)]
+pub struct NestedStruct {
+    pub dummy_struct: DummyStruct,
+    pub optional_number: Option<i32>,
+    pub error_estimate: ErrorEstimate,
+}
+```
+
+
 ## Byte arrays and Vectors
 
 You can pass a static array of bytes, since the size if known at compilation time.
