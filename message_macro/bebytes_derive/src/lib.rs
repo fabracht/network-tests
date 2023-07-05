@@ -564,6 +564,7 @@ pub fn derive_be_bytes(input: TokenStream) -> TokenStream {
                 }
             });
 
+            // Generate the code for the enum
             let expanded = quote! {
                 impl #my_trait_path for #name {
                     fn try_from_be_bytes(bytes: &[u8]) -> Result<(Self, usize), Box<dyn std::error::Error>> {
