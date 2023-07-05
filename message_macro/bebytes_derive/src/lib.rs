@@ -1,5 +1,5 @@
 extern crate proc_macro;
-use proc_macro::{TokenStream};
+use proc_macro::TokenStream;
 use quote::{__private::Span, quote, quote_spanned};
 use syn::{
     parenthesized, parse_macro_input, spanned::Spanned, AngleBracketedGenericArguments, Data,
