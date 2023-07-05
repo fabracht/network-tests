@@ -37,5 +37,5 @@ jobs:
         run: cargo install cargo-release
 
       - name: Bump version
-        run: cargo release ${{ steps.extract_version.outputs.version_component }}
+        run: cargo release --release ${{ steps.extract_version.outputs.version_component }}
         working-directory: message_macro/bebytes_derive
