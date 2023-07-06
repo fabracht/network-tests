@@ -23,5 +23,5 @@ path = "./bin/macro_test.rs"
 bebytes_derive = "0.2"
 
 [dev-dependencies]
-trybuild = { version = "1.0.49", features = ["diff"] }
+trybuild = { version = "1.0.81", features = ["diff"] }
 test-case = "3.0"
