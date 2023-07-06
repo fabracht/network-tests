@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 description = "Low level code for the server and client applications"
 license = "MIT"
-repository = "https://github.com/fabracht/network-tests/network-commons"
+repository = "https://github.com/fabracht/network-tests"
 
 [dependencies]
 libc = "0.2"
