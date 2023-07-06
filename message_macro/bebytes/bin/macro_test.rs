@@ -1,3 +1,4 @@
+#![allow(clippy::assign_op_pattern)]
 use bebytes::BeBytes;
 fn main() {
     let error_estimate = ErrorEstimateMini {

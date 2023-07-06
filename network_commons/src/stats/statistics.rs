@@ -1,3 +1,4 @@
+#![allow(clippy::only_used_in_recursion)]
 use super::tree_iterator::{TraversalOrder, TreeIterator};
 
 #[derive(Debug, Clone)]
@@ -230,7 +231,7 @@ impl OrderStatisticsTree {
 
     fn min_node<'a>(&'a self, node: &'a Node) -> &Node {
         match node.left {
-            Some(ref left) => self.min_node(left),
+            Some(ref left) => OrderStatisticsTree::min_node(self, left),
             None => node,
         }
     }
@@ -309,8 +310,8 @@ impl OrderStatisticsTree {
     pub fn sum_squares(&self, node: Option<&Node>) -> f64 {
         match node {
             Some(node) => {
-                let left_sum = OrderStatisticsTree::sum_squares(self, node.left.as_deref());
-                let right_sum = OrderStatisticsTree::sum_squares(self, node.right.as_deref());
+                let left_sum = self.sum_squares(node.left.as_deref());
+                let right_sum = self.sum_squares(node.right.as_deref());
                 node.value.powi(2) + left_sum + right_sum
             }
             None => 0.0,
@@ -364,7 +365,7 @@ impl OrderStatisticsTree {
 
     fn max_node<'a>(&'a self, node: &'a Node) -> &Node {
         match node.right {
-            Some(ref right) => OrderStatisticsTree::max_node(self, right),
+            Some(ref right) => self.max_node(right),
             None => node,
         }
     }

@@ -98,7 +98,10 @@ pub fn derive_be_bytes(input: TokenStream) -> TokenStream {
                             }
                             // add the parsing code for the field
                             if number_length > 1 {
-                                let chunks = generate_chunks(number_length, syn::Ident::new("chunk", Span::call_site()));
+                                let chunks = generate_chunks(
+                                    number_length,
+                                    syn::Ident::new("chunk", Span::call_site()),
+                                );
 
                                 field_parsing.push(quote! {
                                     let mut inner_total_size = #total_size;
@@ -167,7 +170,6 @@ pub fn derive_be_bytes(input: TokenStream) -> TokenStream {
                                         // println!("Bytes len {}, resize {}", bytes.len(), #u8_byte_index + i);
                                         // println!("Byte value: {:08b}", byte_values[i]);
                                         bytes[#u8_byte_index + i] |= byte_values[i];
-                                        
                                         // println!("Byte: {:08b}", bytes[#u8_byte_index + i]);
                                         inner_total_size = inner_total_size + (8 - shift_right);
                                     }
@@ -176,7 +178,6 @@ pub fn derive_be_bytes(input: TokenStream) -> TokenStream {
                                 field_parsing.push(quote! {
                                     bit_sum += #size;
                                     let shift_factor = 8 - #total_size % 8;
-    
                                     let #field_name = (bytes[#u8_byte_index]  >> (7 - (#size + #pos % 8 - 1) as #field_type )) & (#mask as #field_type);
                                 });
 
@@ -593,7 +594,7 @@ pub fn derive_be_bytes(input: TokenStream) -> TokenStream {
             };
             expanded.into()
         }
-        _ => { 
+        _ => {
             let error =
                 syn::Error::new(Span::call_site(), "Type is not supported").to_compile_error();
             let output = quote! {
