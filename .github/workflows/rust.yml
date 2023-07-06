@@ -23,6 +23,17 @@ jobs:
       with:
         toolchain: stable
         override: true
+        components: rustfmt, clippy
+    - name: Check formatting
+      uses: actions-rs/cargo@v1
+      with:
+        command: fmt
+        args: -- --check
+    - name: Lint with clippy
+      uses: actions-rs/cargo@v1
+      with:
+        command: clippy
+        args: -- -D warnings
     - name: Build
       run: cargo build --verbose
     - name: Run tests
