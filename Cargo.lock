@@ -56,19 +56,19 @@ dependencies = [
 [[package]]
 name = "bebytes"
 version = "0.1.1"
-dependencies = [
- "bebytes_derive 0.2.12 (registry+https://github.com/rust-lang/crates.io-index)",
- "test-case",
- "trybuild",
-]
-
-[[package]]
-name = "bebytes"
-version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f7f6e81a543fda43b04ad9732962fca66065ecd1acbddcf5f7441aea4a8df571"
 dependencies = [
  "bebytes_derive 0.2.12 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "bebytes"
+version = "0.1.2"
+dependencies = [
+ "bebytes_derive 0.2.12 (registry+https://github.com/rust-lang/crates.io-index)",
+ "test-case",
+ "trybuild",
 ]
 
 [[package]]
@@ -369,7 +369,7 @@ dependencies = [
 name = "network_commons"
 version = "0.1.0"
 dependencies = [
- "bebytes 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "bebytes 0.1.1",
  "libc",
  "log",
  "mio",
@@ -386,7 +386,7 @@ version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c0819bc44f889de1797ee102fbf8c06a7afc9cce67f14318914d1476f8e704c"
 dependencies = [
- "bebytes 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "bebytes 0.1.1",
  "libc",
  "log",
  "mio",
@@ -766,7 +766,7 @@ dependencies = [
 name = "twamp"
 version = "0.1.0"
 dependencies = [
- "bebytes 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "bebytes 0.1.1",
  "libc",
  "log",
  "log4rs",
