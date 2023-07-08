@@ -72,6 +72,7 @@ The BeBytes derive macro will generate the following methods for your struct:
 - `field_size(&self) -> usize`: A method to calculate the size (in bytes) of the struct.
 
 ## Contribute
+
 I'm doing this for fun, but all help is appreciated. Thanks
 
 ## License

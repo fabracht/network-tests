@@ -19,7 +19,8 @@
 				"stkb.rewrap",
 				"davidanson.vscode-markdownlint",
 				"WakaTime.vscode-wakatime",
-				"serayuzgur.crates"
+				"serayuzgur.crates",
+				"github.vscode-github-actions"
 			]
 		}
 	},
