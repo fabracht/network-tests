@@ -15,7 +15,7 @@ pub struct ErrorEstimate {
 #[test_case(0, 1, 0, 1; "s_bit_0_z_bit_1_scale_0_multiplier_1")]
 #[test_case(1, 0, 63, 100; "s_bit_1_z_bit_0_scale_63_multiplier_100")]
 fn test_new(s_bit: u8, z_bit: u8, scale: u8, multiplier: u32) {
-    let error_estimate = ErrorEstimate::new(s_bit, z_bit, scale, multiplier).unwrap();
+    let error_estimate = ErrorEstimate::new(s_bit, z_bit, scale, multiplier);
     assert_eq!(
         error_estimate,
         ErrorEstimate {
@@ -44,5 +44,5 @@ fn test_to_be_bytes(input: ErrorEstimate, expected: Vec<u8>) {
 #[test]
 #[should_panic(expected = "Value of field scale is out of range")]
 fn test_value_out_of_range() {
-    let _ = ErrorEstimate::new(0, 1, 64, 1).unwrap();
+    let _ = ErrorEstimate::new(0, 1, 64, 1);
 }
