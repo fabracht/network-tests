@@ -69,7 +69,7 @@ impl Strategy<TwampResult, CommonError> for Reflector {
                 let reflected_message = ReflectedMessage {
                     reflector_sequence_number: session.seq_number.load(Ordering::SeqCst),
                     timestamp: NtpTimestamp::from(DateTime::utc_now()),
-                    error_estimate: ErrorEstimate::new(0, 0, 0, 1)?,
+                    error_estimate: ErrorEstimate::new(0, 0, 0, 1),
                     mbz1: 0,
                     receive_timestamp: NtpTimestamp::from(timestamp),
                     sender_sequence_number: twamp_test_message.sequence_number,
@@ -88,7 +88,7 @@ impl Strategy<TwampResult, CommonError> for Reflector {
                 let reflected_message = ReflectedMessage {
                     reflector_sequence_number: session.seq_number.load(Ordering::SeqCst),
                     timestamp: NtpTimestamp::from(DateTime::utc_now()),
-                    error_estimate: ErrorEstimate::new(0, 0, 0, 1)?,
+                    error_estimate: ErrorEstimate::new(0, 0, 0, 1),
                     mbz1: 0,
                     receive_timestamp: NtpTimestamp::from(timestamp),
                     sender_sequence_number: twamp_test_message.sequence_number,

@@ -1,9 +1,8 @@
-use network_commons::stats::tree_iterator::TraversalOrder::Inorder;
 use network_commons::{
     error::CommonError,
     host::Host,
     message::{Message, PacketResults, SessionPackets, TimestampsResult},
-    stats::{offset_estimator::estimate, statistics::OrderStatisticsTree},
+    stats::offset_estimator::estimate,
     time::DateTime,
 };
 use std::{
@@ -167,19 +166,17 @@ impl Session {
 
     /// Calculates the GAMLR offset for this session.
     /// Uses the provided OrderStatisticsTrees for forward and backward One-Way Delay.
-    pub fn calculate_gamlr_offset(
-        &self,
-        f_owd_tree: &OrderStatisticsTree,
-        b_owd_tree: &OrderStatisticsTree,
-    ) -> Option<f64> {
-        let results = self.results.read().ok()?;
-
-        if results.is_empty() || results.len() < 5 {
+    pub fn calculate_gamlr_offset(&self, forward_owd: &[f64], backward_owd: &[f64]) -> Option<f64> {
+        // let results = self.results.read().ok()?;
+        if forward_owd.len() < 5 || backward_owd.len() < 5 {
             return None;
         }
+        // if results.is_empty() || results.len() < 5 {
+        //     return None;
+        // }
 
-        let forward_owd: Vec<f64> = f_owd_tree.iter(Inorder).map(|node| node.value()).collect();
-        let backward_owd: Vec<f64> = b_owd_tree.iter(Inorder).map(|node| node.value()).collect();
+        // let forward_owd: Vec<f64> = f_owd_tree.iter(Inorder).map(|node| node.value()).collect();
+        // let backward_owd: Vec<f64> = b_owd_tree.iter(Inorder).map(|node| node.value()).collect();
 
         // Ensure that we have complete chunks for the estimate
         let f_chunks: Vec<_> = forward_owd

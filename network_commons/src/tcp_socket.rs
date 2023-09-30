@@ -228,41 +228,38 @@ impl TimestampedTcpSocket {
             return Err(CommonError::SocketCreateFailed(io::Error::last_os_error()));
         }
 
+        let mut sockaddr_storage: libc::sockaddr_storage = unsafe { std::mem::zeroed() };
         let (sock_addr, sock_addr_len) = match addr {
             SocketAddr::V4(a) => {
-                let ip_octets = a.ip().octets();
-                let in_addr = libc::in_addr {
-                    s_addr: u32::from_be_bytes(ip_octets),
-                };
-                let sockaddr = sockaddr_in {
-                    sin_family: AF_INET as libc::sa_family_t,
-                    sin_port: a.port().to_be(),
-                    sin_addr: in_addr,
-                    sin_zero: [0; 8],
-                };
+                let sockaddr = &mut sockaddr_storage as *mut _ as *mut libc::sockaddr_in;
+                unsafe {
+                    (*sockaddr).sin_family = libc::AF_INET as libc::sa_family_t;
+                    (*sockaddr).sin_port = a.port().to_be();
+                    (*sockaddr).sin_addr.s_addr = u32::from_be_bytes(a.ip().octets());
+                }
                 (
-                    &sockaddr as *const sockaddr_in as *const sockaddr,
-                    std::mem::size_of_val(&sockaddr) as socklen_t,
+                    sockaddr as *const libc::sockaddr,
+                    std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
                 )
             }
             SocketAddr::V6(a) => {
-                let ip_octets = a.ip().octets();
-                let mut in6_addr = libc::in6_addr { s6_addr: [0; 16] };
-                in6_addr.s6_addr.copy_from_slice(&ip_octets);
-                let sockaddr = sockaddr_in6 {
-                    sin6_family: AF_INET6 as libc::sa_family_t,
-                    sin6_port: a.port().to_be(),
-                    sin6_addr: in6_addr,
-                    sin6_flowinfo: a.flowinfo(),
-                    sin6_scope_id: a.scope_id(),
-                };
+                let sockaddr = &mut sockaddr_storage as *mut _ as *mut libc::sockaddr_in6;
+                unsafe {
+                    (*sockaddr).sin6_family = libc::AF_INET6 as libc::sa_family_t;
+                    (*sockaddr).sin6_port = a.port().to_be();
+                    (*sockaddr)
+                        .sin6_addr
+                        .s6_addr
+                        .copy_from_slice(&a.ip().octets());
+                    (*sockaddr).sin6_flowinfo = a.flowinfo();
+                    (*sockaddr).sin6_scope_id = a.scope_id();
+                }
                 (
-                    &sockaddr as *const sockaddr_in6 as *const sockaddr,
-                    std::mem::size_of_val(&sockaddr) as socklen_t,
+                    sockaddr as *const libc::sockaddr,
+                    std::mem::size_of::<libc::sockaddr_in6>() as libc::socklen_t,
                 )
             }
         };
-
         let result = unsafe { libc::connect(socket_fd, sock_addr, sock_addr_len) };
 
         if result < 0 {

@@ -1,7 +1,6 @@
 [workspace]
-members = [
-    "twamp",
-    "network_commons",
-    "message_macro/bebytes_derive",
-    "message_macro/bebytes",
-]
+members = ["twamp", "network_commons"]
+resolver = "2"
+
+[patch.crates-io]
+network_commons = { path = "network_commons" }

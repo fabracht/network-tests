@@ -6,7 +6,6 @@ use network_commons::{
     event_loop::{EventLoopTrait, Itimerspec, Token},
     host::Host,
     socket::Socket,
-    stats::statistics::OrderStatisticsTree,
     time::{DateTime, NtpTimestamp},
     udp_socket::TimestampedUdpSocket,
     Strategy,
@@ -134,7 +133,6 @@ impl Strategy<TwampResult, CommonError> for TwampLight {
         Ok(test_result)
     }
 }
-
 fn calculate_session_results(rc_sessions: Rc<RefCell<Vec<Session>>>) -> Vec<SessionResult> {
     rc_sessions
         .borrow_mut()
@@ -144,60 +142,110 @@ fn calculate_session_results(rc_sessions: Rc<RefCell<Vec<Session>>>) -> Vec<Sess
             let total_packets = packets.len();
             let (forward_loss, backward_loss, total_loss) =
                 session.analyze_packet_loss().unwrap_or_default();
-            let mut rtt_tree = OrderStatisticsTree::new();
-            let mut f_owd_tree = OrderStatisticsTree::new();
-            let mut b_owd_tree = OrderStatisticsTree::new();
-            let mut rpd_tree = OrderStatisticsTree::new();
+
+            let mut rtt_vec = Vec::new();
+            let mut f_owd_vec = Vec::new();
+            let mut b_owd_vec = Vec::new();
+            let mut rpd_vec = Vec::new();
+
+            let mut rtt_sum = 0.0;
+            let mut f_owd_sum = 0.0;
+            let mut b_owd_sum = 0.0;
+            let mut rpd_sum = 0.0;
 
             for packet in packets.iter() {
                 if let Some(rtt) = packet.calculate_rtt() {
-                    rtt_tree.insert(rtt.as_nanos() as f64);
+                    let rtt = rtt.as_nanos() as f64;
+                    rtt_vec.push(rtt);
+                    rtt_sum += rtt;
                 }
 
                 if let Some(owd) = packet.calculate_owd_forward() {
-                    f_owd_tree.insert(owd.as_nanos() as f64);
+                    let owd = owd.as_nanos() as f64;
+                    f_owd_vec.push(owd);
+                    f_owd_sum += owd;
                 }
 
                 if let Some(owd) = packet.calculate_owd_backward() {
-                    b_owd_tree.insert(owd.as_nanos() as f64);
+                    let owd = owd.as_nanos() as f64;
+                    b_owd_vec.push(owd);
+                    b_owd_sum += owd;
                 }
 
                 if let Some(rpd) = packet.calculate_rpd() {
-                    rpd_tree.insert(rpd.as_nanos() as f64);
+                    let rpd = rpd.as_nanos() as f64;
+                    rpd_vec.push(rpd);
+                    rpd_sum += rpd;
                 }
             }
 
-            let gamlr_offset = session.calculate_gamlr_offset(&f_owd_tree, &b_owd_tree);
+            // Sort the vectors for median and percentile calculations
+            rtt_vec.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+            f_owd_vec.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+            b_owd_vec.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+            rpd_vec.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+
+            let gamlr_offset = session.calculate_gamlr_offset(&f_owd_vec, &b_owd_vec);
 
             let network_results = NetworkStatistics {
-                avg_rtt: rtt_tree.mean(),
-                min_rtt: rtt_tree.min().unwrap_or_default(),
-                max_rtt: rtt_tree.max().unwrap_or_default(),
-                std_dev_rtt: rtt_tree.std_dev(),
-                median_rtt: rtt_tree.median().unwrap_or_default(),
-                low_percentile_rtt: rtt_tree.percentile(25.0).unwrap_or_default(),
-                high_percentile_rtt: rtt_tree.percentile(75.0).unwrap_or_default(),
-                avg_forward_owd: f_owd_tree.mean(),
-                min_forward_owd: f_owd_tree.min().unwrap_or_default(),
-                max_forward_owd: f_owd_tree.max().unwrap_or_default(),
-                std_dev_forward_owd: f_owd_tree.std_dev(),
-                median_forward_owd: f_owd_tree.median().unwrap_or_default(),
-                low_percentile_forward_owd: f_owd_tree.percentile(25.0).unwrap_or_default(),
-                high_percentile_forward_owd: f_owd_tree.percentile(75.0).unwrap_or_default(),
-                avg_backward_owd: b_owd_tree.mean(),
-                min_backward_owd: b_owd_tree.min().unwrap_or_default(),
-                max_backward_owd: b_owd_tree.max().unwrap_or_default(),
-                std_dev_backward_owd: b_owd_tree.std_dev(),
-                median_backward_owd: b_owd_tree.median().unwrap_or_default(),
-                low_percentile_backward_owd: b_owd_tree.percentile(25.0).unwrap_or_default(),
-                high_percentile_backward_owd: b_owd_tree.percentile(75.0).unwrap_or_default(),
-                avg_process_time: rpd_tree.mean(),
-                min_process_time: rpd_tree.min().unwrap_or_default(),
-                max_process_time: rpd_tree.max().unwrap_or_default(),
-                std_dev_process_time: rpd_tree.std_dev(),
-                median_process_time: rpd_tree.median().unwrap_or_default(),
-                low_percentile_process_time: rpd_tree.percentile(25.0).unwrap_or_default(),
-                high_percentile_process_time: rpd_tree.percentile(75.0).unwrap_or_default(),
+                avg_rtt: rtt_sum / total_packets as f64,
+                min_rtt: *rtt_vec
+                    .iter()
+                    .min_by(|a, b| a.partial_cmp(b).unwrap())
+                    .unwrap_or(&0.0),
+                max_rtt: *rtt_vec
+                    .iter()
+                    .max_by(|a, b| a.partial_cmp(b).unwrap())
+                    .unwrap_or(&0.0),
+                std_dev_rtt: calculate_std_dev(&rtt_vec, rtt_sum / total_packets as f64),
+                median_rtt: median(&rtt_vec),
+                low_percentile_rtt: percentile(&rtt_vec, 25.0),
+                high_percentile_rtt: percentile(&rtt_vec, 75.0),
+                avg_forward_owd: f_owd_sum / total_packets as f64,
+                min_forward_owd: *f_owd_vec
+                    .iter()
+                    .min_by(|a, b| a.partial_cmp(b).unwrap())
+                    .unwrap_or(&0.0),
+                max_forward_owd: *f_owd_vec
+                    .iter()
+                    .max_by(|a, b| a.partial_cmp(b).unwrap())
+                    .unwrap_or(&0.0),
+                std_dev_forward_owd: calculate_std_dev(
+                    &f_owd_vec,
+                    f_owd_sum / total_packets as f64,
+                ),
+                median_forward_owd: median(&f_owd_vec),
+                low_percentile_forward_owd: percentile(&f_owd_vec, 25.0),
+                high_percentile_forward_owd: percentile(&f_owd_vec, 75.0),
+                avg_backward_owd: b_owd_sum / total_packets as f64,
+                min_backward_owd: *b_owd_vec
+                    .iter()
+                    .min_by(|a, b| a.partial_cmp(b).unwrap())
+                    .unwrap_or(&0.0),
+                max_backward_owd: *b_owd_vec
+                    .iter()
+                    .max_by(|a, b| a.partial_cmp(b).unwrap())
+                    .unwrap_or(&0.0),
+                std_dev_backward_owd: calculate_std_dev(
+                    &b_owd_vec,
+                    b_owd_sum / total_packets as f64,
+                ),
+                median_backward_owd: median(&b_owd_vec),
+                low_percentile_backward_owd: percentile(&b_owd_vec, 25.0),
+                high_percentile_backward_owd: percentile(&b_owd_vec, 75.0),
+                avg_process_time: rpd_sum / total_packets as f64,
+                min_process_time: *rpd_vec
+                    .iter()
+                    .min_by(|a, b| a.partial_cmp(b).unwrap())
+                    .unwrap_or(&0.0),
+                max_process_time: *rpd_vec
+                    .iter()
+                    .max_by(|a, b| a.partial_cmp(b).unwrap())
+                    .unwrap_or(&0.0),
+                std_dev_process_time: calculate_std_dev(&rpd_vec, rpd_sum / total_packets as f64),
+                median_process_time: median(&rpd_vec),
+                low_percentile_process_time: percentile(&rpd_vec, 25.0),
+                high_percentile_process_time: percentile(&rpd_vec, 75.0),
                 forward_loss,
                 backward_loss,
                 total_loss,
@@ -213,6 +261,105 @@ fn calculate_session_results(rc_sessions: Rc<RefCell<Vec<Session>>>) -> Vec<Sess
         })
         .collect()
 }
+
+fn median(v: &[f64]) -> f64 {
+    let mid = v.len() / 2;
+    if v.len() % 2 == 0 {
+        (v[mid - 1] + v[mid]) / 2.0
+    } else {
+        v[mid]
+    }
+}
+
+fn percentile(v: &[f64], percentile: f64) -> f64 {
+    let idx = (percentile / 100.0 * (v.len() - 1) as f64).round() as usize;
+    v[idx]
+}
+
+fn calculate_std_dev(v: &[f64], mean: f64) -> f64 {
+    let variance = v.iter().map(|&value| (value - mean).powi(2)).sum::<f64>() / v.len() as f64;
+    variance.sqrt()
+}
+
+// fn calculate_session_results(rc_sessions: Rc<RefCell<Vec<Session>>>) -> Vec<SessionResult> {
+//     rc_sessions
+//         .borrow_mut()
+//         .iter()
+//         .map(|session| {
+//             let packets = session.results.read().unwrap();
+//             let total_packets = packets.len();
+//             let (forward_loss, backward_loss, total_loss) =
+//                 session.analyze_packet_loss().unwrap_or_default();
+//             let mut rtt_tree = OrderStatisticsTree::new();
+//             let mut f_owd_tree = OrderStatisticsTree::new();
+//             let mut b_owd_tree = OrderStatisticsTree::new();
+//             let mut rpd_tree = OrderStatisticsTree::new();
+
+//             for packet in packets.iter() {
+//                 if let Some(rtt) = packet.calculate_rtt() {
+//                     rtt_tree.insert(rtt.as_nanos() as f64);
+//                 }
+
+//                 if let Some(owd) = packet.calculate_owd_forward() {
+//                     f_owd_tree.insert(owd.as_nanos() as f64);
+//                 }
+
+//                 if let Some(owd) = packet.calculate_owd_backward() {
+//                     b_owd_tree.insert(owd.as_nanos() as f64);
+//                 }
+
+//                 if let Some(rpd) = packet.calculate_rpd() {
+//                     rpd_tree.insert(rpd.as_nanos() as f64);
+//                 }
+//             }
+
+//             let gamlr_offset = session.calculate_gamlr_offset(&f_owd_tree, &b_owd_tree);
+//             // let gamlr_offset = None;
+
+//             let network_results = NetworkStatistics {
+//                 avg_rtt: rtt_tree.mean(),
+//                 min_rtt: rtt_tree.min().unwrap_or_default(),
+//                 max_rtt: rtt_tree.max().unwrap_or_default(),
+//                 std_dev_rtt: rtt_tree.std_dev(),
+//                 median_rtt: rtt_tree.median().unwrap_or_default(),
+//                 low_percentile_rtt: rtt_tree.percentile(25.0).unwrap_or_default(),
+//                 high_percentile_rtt: rtt_tree.percentile(75.0).unwrap_or_default(),
+//                 avg_forward_owd: f_owd_tree.mean(),
+//                 min_forward_owd: f_owd_tree.min().unwrap_or_default(),
+//                 max_forward_owd: f_owd_tree.max().unwrap_or_default(),
+//                 std_dev_forward_owd: f_owd_tree.std_dev(),
+//                 median_forward_owd: f_owd_tree.median().unwrap_or_default(),
+//                 low_percentile_forward_owd: f_owd_tree.percentile(25.0).unwrap_or_default(),
+//                 high_percentile_forward_owd: f_owd_tree.percentile(75.0).unwrap_or_default(),
+//                 avg_backward_owd: b_owd_tree.mean(),
+//                 min_backward_owd: b_owd_tree.min().unwrap_or_default(),
+//                 max_backward_owd: b_owd_tree.max().unwrap_or_default(),
+//                 std_dev_backward_owd: b_owd_tree.std_dev(),
+//                 median_backward_owd: b_owd_tree.median().unwrap_or_default(),
+//                 low_percentile_backward_owd: b_owd_tree.percentile(25.0).unwrap_or_default(),
+//                 high_percentile_backward_owd: b_owd_tree.percentile(75.0).unwrap_or_default(),
+//                 avg_process_time: rpd_tree.mean(),
+//                 min_process_time: rpd_tree.min().unwrap_or_default(),
+//                 max_process_time: rpd_tree.max().unwrap_or_default(),
+//                 std_dev_process_time: rpd_tree.std_dev(),
+//                 median_process_time: rpd_tree.median().unwrap_or_default(),
+//                 low_percentile_process_time: rpd_tree.percentile(25.0).unwrap_or_default(),
+//                 high_percentile_process_time: rpd_tree.percentile(75.0).unwrap_or_default(),
+//                 forward_loss,
+//                 backward_loss,
+//                 total_loss,
+//                 total_packets,
+//                 gamlr_offset,
+//             };
+
+//             SessionResult {
+//                 address: session.socket_address,
+//                 status: Some("Success".to_string()),
+//                 network_statistics: Some(network_results),
+//             }
+//         })
+//         .collect()
+// }
 
 fn create_tx_callback(
     event_loop: &mut EventLoop<TimestampedUdpSocket>,
@@ -230,14 +377,13 @@ fn create_tx_callback(
             let twamp_test_message = SenderMessage::new(
                 session.seq_number.load(Ordering::SeqCst),
                 timestamp,
-                ErrorEstimate::new(1, 0, 1, 1).unwrap(),
+                ErrorEstimate::new(1, 0, 1, 1),
                 vec![0u8; MIN_UNAUTH_PADDING + padding],
-            )
-            .map_err(|e| CommonError::from(e.to_string()));
+            );
 
             log::debug!("Twamp Sender Message {:?}", twamp_test_message);
             let (sent, timestamp) = inner_socket
-                .send_to(&session.socket_address, twamp_test_message.unwrap())
+                .send_to(&session.socket_address, twamp_test_message)
                 .unwrap();
 
             received_bytes.push(sent);
@@ -252,7 +398,7 @@ fn create_tx_callback(
                 let twamp_test_message = SenderMessage {
                     sequence_number: session.seq_number.load(Ordering::SeqCst),
                     timestamp: NtpTimestamp::from(*timestamp),
-                    error_estimate: ErrorEstimate::new(1, 1, 1, 1).unwrap(),
+                    error_estimate: ErrorEstimate::new(1, 1, 1, 1),
                     padding: Vec::new(),
                 };
                 session.add_to_sent(Box::new(twamp_test_message))
@@ -272,6 +418,7 @@ fn create_tx_correct_callback(
         let mut tx_timestamps = vec![];
 
         while let Ok(error_messages) = inner_socket.receive_errors() {
+            log::warn!("Received Timestamps {:?}", error_messages);
             error_messages
                 .iter()
                 .for_each(|(_res, _address, tx_timestamp)| {
