@@ -1,9 +1,10 @@
+use std::net::SocketAddr;
+
 use crate::twamp_light_reflector::reflector::Reflector;
 use crate::twamp_light_reflector::Configuration as ReflectorConfiguration;
 use crate::twamp_light_sender::twamp_light::TwampLight;
 use crate::twamp_light_sender::Configuration as LightConfiguration;
 
-use network_commons::host::Host;
 use network_commons::{error::CommonError, Strategy};
 use serde::{Deserialize, Serialize};
 pub use twamp_light_sender::result::TwampResult;
@@ -16,7 +17,7 @@ mod twamp_light_sender;
 #[derive(Validate, Serialize, Deserialize, Debug, PartialEq, Clone, Default)]
 
 pub struct TwampConfiguration {
-    pub hosts: Option<Vec<Host>>,
+    pub hosts: Option<Vec<SocketAddr>>,
     pub mode: String,
     pub source_ip_address: Option<String>,
     pub collection_period: Option<u64>,
@@ -41,7 +42,7 @@ impl Twamp {
             .hosts
             .iter()
             .flat_map(|host| host.clone())
-            .collect::<Vec<Host>>();
+            .collect::<Vec<SocketAddr>>();
         match self.configuration.mode.as_str() {
             "LIGHT_SENDER" => {
                 let configuration = LightConfiguration::new(

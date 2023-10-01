@@ -4,7 +4,6 @@ use network_commons::epoll_loop::LinuxEventLoop as EventLoop;
 use network_commons::{
     error::CommonError,
     event_loop::{EventLoopTrait, Itimerspec, Token},
-    host::Host,
     socket::Socket,
     time::{DateTime, NtpTimestamp},
     udp_socket::TimestampedUdpSocket,
@@ -17,13 +16,13 @@ use crate::twamp_common::message::{ErrorEstimate, ReflectedMessage, SenderMessag
 use crate::twamp_common::{session::Session, MIN_UNAUTH_PADDING};
 use crate::twamp_light_sender::Configuration as TwampLightConfiguration;
 use core::time::Duration;
-use std::{cell::RefCell, os::fd::IntoRawFd, rc::Rc, sync::atomic::Ordering};
+use std::{cell::RefCell, net::SocketAddr, os::fd::IntoRawFd, rc::Rc, sync::atomic::Ordering};
 
 use super::result::{NetworkStatistics, SessionResult, TwampResult};
 
 pub struct TwampLight {
     /// List of host on which runs a reflecctors to perform the test
-    hosts: Vec<Host>,
+    hosts: Vec<SocketAddr>,
     /// IP address of the interface on which to bind
     source_ip_address: String,
     /// Duration of the test
@@ -281,86 +280,6 @@ fn calculate_std_dev(v: &[f64], mean: f64) -> f64 {
     variance.sqrt()
 }
 
-// fn calculate_session_results(rc_sessions: Rc<RefCell<Vec<Session>>>) -> Vec<SessionResult> {
-//     rc_sessions
-//         .borrow_mut()
-//         .iter()
-//         .map(|session| {
-//             let packets = session.results.read().unwrap();
-//             let total_packets = packets.len();
-//             let (forward_loss, backward_loss, total_loss) =
-//                 session.analyze_packet_loss().unwrap_or_default();
-//             let mut rtt_tree = OrderStatisticsTree::new();
-//             let mut f_owd_tree = OrderStatisticsTree::new();
-//             let mut b_owd_tree = OrderStatisticsTree::new();
-//             let mut rpd_tree = OrderStatisticsTree::new();
-
-//             for packet in packets.iter() {
-//                 if let Some(rtt) = packet.calculate_rtt() {
-//                     rtt_tree.insert(rtt.as_nanos() as f64);
-//                 }
-
-//                 if let Some(owd) = packet.calculate_owd_forward() {
-//                     f_owd_tree.insert(owd.as_nanos() as f64);
-//                 }
-
-//                 if let Some(owd) = packet.calculate_owd_backward() {
-//                     b_owd_tree.insert(owd.as_nanos() as f64);
-//                 }
-
-//                 if let Some(rpd) = packet.calculate_rpd() {
-//                     rpd_tree.insert(rpd.as_nanos() as f64);
-//                 }
-//             }
-
-//             let gamlr_offset = session.calculate_gamlr_offset(&f_owd_tree, &b_owd_tree);
-//             // let gamlr_offset = None;
-
-//             let network_results = NetworkStatistics {
-//                 avg_rtt: rtt_tree.mean(),
-//                 min_rtt: rtt_tree.min().unwrap_or_default(),
-//                 max_rtt: rtt_tree.max().unwrap_or_default(),
-//                 std_dev_rtt: rtt_tree.std_dev(),
-//                 median_rtt: rtt_tree.median().unwrap_or_default(),
-//                 low_percentile_rtt: rtt_tree.percentile(25.0).unwrap_or_default(),
-//                 high_percentile_rtt: rtt_tree.percentile(75.0).unwrap_or_default(),
-//                 avg_forward_owd: f_owd_tree.mean(),
-//                 min_forward_owd: f_owd_tree.min().unwrap_or_default(),
-//                 max_forward_owd: f_owd_tree.max().unwrap_or_default(),
-//                 std_dev_forward_owd: f_owd_tree.std_dev(),
-//                 median_forward_owd: f_owd_tree.median().unwrap_or_default(),
-//                 low_percentile_forward_owd: f_owd_tree.percentile(25.0).unwrap_or_default(),
-//                 high_percentile_forward_owd: f_owd_tree.percentile(75.0).unwrap_or_default(),
-//                 avg_backward_owd: b_owd_tree.mean(),
-//                 min_backward_owd: b_owd_tree.min().unwrap_or_default(),
-//                 max_backward_owd: b_owd_tree.max().unwrap_or_default(),
-//                 std_dev_backward_owd: b_owd_tree.std_dev(),
-//                 median_backward_owd: b_owd_tree.median().unwrap_or_default(),
-//                 low_percentile_backward_owd: b_owd_tree.percentile(25.0).unwrap_or_default(),
-//                 high_percentile_backward_owd: b_owd_tree.percentile(75.0).unwrap_or_default(),
-//                 avg_process_time: rpd_tree.mean(),
-//                 min_process_time: rpd_tree.min().unwrap_or_default(),
-//                 max_process_time: rpd_tree.max().unwrap_or_default(),
-//                 std_dev_process_time: rpd_tree.std_dev(),
-//                 median_process_time: rpd_tree.median().unwrap_or_default(),
-//                 low_percentile_process_time: rpd_tree.percentile(25.0).unwrap_or_default(),
-//                 high_percentile_process_time: rpd_tree.percentile(75.0).unwrap_or_default(),
-//                 forward_loss,
-//                 backward_loss,
-//                 total_loss,
-//                 total_packets,
-//                 gamlr_offset,
-//             };
-
-//             SessionResult {
-//                 address: session.socket_address,
-//                 status: Some("Success".to_string()),
-//                 network_statistics: Some(network_results),
-//             }
-//         })
-//         .collect()
-// }
-
 fn create_tx_callback(
     event_loop: &mut EventLoop<TimestampedUdpSocket>,
     timer_spec: Itimerspec,
@@ -418,7 +337,6 @@ fn create_tx_correct_callback(
         let mut tx_timestamps = vec![];
 
         while let Ok(error_messages) = inner_socket.receive_errors() {
-            log::warn!("Received Timestamps {:?}", error_messages);
             error_messages
                 .iter()
                 .for_each(|(_res, _address, tx_timestamp)| {

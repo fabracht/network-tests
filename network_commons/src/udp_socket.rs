@@ -237,7 +237,6 @@ impl TimestampedUdpSocket {
             Ok(timestamps)
         } else {
             let error = format!("Failed to get error messages: {}", res);
-            log::error!("{}", error);
             Err(CommonError::Io(std::io::Error::new(
                 std::io::ErrorKind::Other,
                 error,

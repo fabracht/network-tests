@@ -1,6 +1,5 @@
 use network_commons::{
     error::CommonError,
-    host::Host,
     message::{Message, PacketResults, SessionPackets, TimestampsResult},
     stats::offset_estimator::estimate,
     time::DateTime,
@@ -28,10 +27,9 @@ pub struct Session {
 
 impl Session {
     /// Creates a new `Session` from a `Host`.
-    pub fn new(host: &Host) -> Result<Self, CommonError> {
-        let host = SocketAddr::try_from(host)?;
+    pub fn new(host: &SocketAddr) -> Result<Self, CommonError> {
         Ok(Self {
-            socket_address: host,
+            socket_address: host.clone(),
             seq_number: AtomicU32::new(0),
             results: Rc::new(RwLock::new(Vec::new())),
             last_updated: 0,
