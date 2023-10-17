@@ -6,8 +6,6 @@ use crate::twamp_common::MIN_UNAUTH_PADDING;
 use network_commons::epoll_loop::LinuxEventLoop as EventLoop;
 
 use bebytes::BeBytes;
-#[cfg(target_os = "macos")]
-use common::kevent_loop::MacOSEventLoop as EventLoop;
 
 use std::{cell::RefCell, os::fd::IntoRawFd, rc::Rc, sync::atomic::Ordering, time::Duration};
 
@@ -69,7 +67,7 @@ impl Strategy<TwampResult, CommonError> for Reflector {
                 let reflected_message = ReflectedMessage {
                     reflector_sequence_number: session.seq_number.load(Ordering::SeqCst),
                     timestamp: NtpTimestamp::from(DateTime::utc_now()),
-                    error_estimate: ErrorEstimate::new(0, 0, 0, 1)?,
+                    error_estimate: ErrorEstimate::new(0, 0, 0, 1),
                     mbz1: 0,
                     receive_timestamp: NtpTimestamp::from(timestamp),
                     sender_sequence_number: twamp_test_message.sequence_number,
@@ -79,7 +77,14 @@ impl Strategy<TwampResult, CommonError> for Reflector {
                     sender_ttl: 255,
                     padding: vec![0_u8; twamp_test_message.padding.len() - MIN_UNAUTH_PADDING],
                 };
+
                 inner_socket.send_to(&socket_address, reflected_message.clone())?;
+                log::info!(
+                    "Received from: {:?}, timestamp: {:?}, seq: {:?}",
+                    socket_address,
+                    timestamp,
+                    session.seq_number
+                );
                 session.add_to_sent(Box::new(reflected_message))?;
             } else {
                 // Create session
@@ -88,7 +93,7 @@ impl Strategy<TwampResult, CommonError> for Reflector {
                 let reflected_message = ReflectedMessage {
                     reflector_sequence_number: session.seq_number.load(Ordering::SeqCst),
                     timestamp: NtpTimestamp::from(DateTime::utc_now()),
-                    error_estimate: ErrorEstimate::new(0, 0, 0, 1)?,
+                    error_estimate: ErrorEstimate::new(0, 0, 0, 1),
                     mbz1: 0,
                     receive_timestamp: NtpTimestamp::from(timestamp),
                     sender_sequence_number: twamp_test_message.sequence_number,

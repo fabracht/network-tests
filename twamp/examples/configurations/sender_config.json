@@ -1,14 +1,12 @@
 {
   "hosts": [
-    {
-      "ip": "127.0.0.1",
-      "port": 45571
-    }
+    "127.0.0.1:45571",
+    "127.0.0.1:45572"
   ],
   "mode": "LIGHT_SENDER",
-  "source_ip_address": "127.0.0.1:45572",
-  "collection_period": 2,
-  "packet_interval": 100,
+  "source_ip_address": "127.0.0.1:45573",
+  "collection_period": 10,
+  "packet_interval": 25,
   "padding": 41,
   "ref_wait": 1,
   "last_message_timeout": 1

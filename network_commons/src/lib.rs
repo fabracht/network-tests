@@ -18,7 +18,6 @@ pub mod error;
 #[cfg(target_os = "linux")]
 pub mod epoll_loop;
 pub mod event_loop;
-pub mod host;
 pub mod message;
 pub mod socket;
 

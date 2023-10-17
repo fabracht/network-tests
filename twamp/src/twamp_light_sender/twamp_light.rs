@@ -4,9 +4,7 @@ use network_commons::epoll_loop::LinuxEventLoop as EventLoop;
 use network_commons::{
     error::CommonError,
     event_loop::{EventLoopTrait, Itimerspec, Token},
-    host::Host,
     socket::Socket,
-    stats::statistics::OrderStatisticsTree,
     time::{DateTime, NtpTimestamp},
     udp_socket::TimestampedUdpSocket,
     Strategy,
@@ -18,13 +16,13 @@ use crate::twamp_common::message::{ErrorEstimate, ReflectedMessage, SenderMessag
 use crate::twamp_common::{session::Session, MIN_UNAUTH_PADDING};
 use crate::twamp_light_sender::Configuration as TwampLightConfiguration;
 use core::time::Duration;
-use std::{cell::RefCell, os::fd::IntoRawFd, rc::Rc, sync::atomic::Ordering};
+use std::{cell::RefCell, net::SocketAddr, os::fd::IntoRawFd, rc::Rc, sync::atomic::Ordering};
 
 use super::result::{NetworkStatistics, SessionResult, TwampResult};
 
 pub struct TwampLight {
     /// List of host on which runs a reflecctors to perform the test
-    hosts: Vec<Host>,
+    hosts: Vec<SocketAddr>,
     /// IP address of the interface on which to bind
     source_ip_address: String,
     /// Duration of the test
@@ -99,18 +97,18 @@ impl Strategy<TwampResult, CommonError> for TwampLight {
             self.padding,
         )?;
 
-        // This configures the tx timestamp correction socket timer.
-        let tx_correction_timer_spec = Itimerspec {
-            it_interval: Duration::from_millis(10),
-            it_value: Duration::from_nanos(1),
-        };
+        // // This configures the tx timestamp correction socket timer.
+        // let tx_correction_timer_spec = Itimerspec {
+        //     it_interval: Duration::from_millis(10),
+        //     it_value: Duration::from_nanos(1),
+        // };
 
-        create_tx_correct_callback(
-            &mut event_loop,
-            tx_correction_timer_spec,
-            rx_token,
-            rc_sessions.clone(),
-        )?;
+        // create_tx_correct_callback(
+        //     &mut event_loop,
+        //     tx_correction_timer_spec,
+        //     rx_token,
+        //     rc_sessions.clone(),
+        // )?;
 
         // Create the deadline event
         let duration_spec = Itimerspec {
@@ -134,7 +132,6 @@ impl Strategy<TwampResult, CommonError> for TwampLight {
         Ok(test_result)
     }
 }
-
 fn calculate_session_results(rc_sessions: Rc<RefCell<Vec<Session>>>) -> Vec<SessionResult> {
     rc_sessions
         .borrow_mut()
@@ -144,60 +141,110 @@ fn calculate_session_results(rc_sessions: Rc<RefCell<Vec<Session>>>) -> Vec<Sess
             let total_packets = packets.len();
             let (forward_loss, backward_loss, total_loss) =
                 session.analyze_packet_loss().unwrap_or_default();
-            let mut rtt_tree = OrderStatisticsTree::new();
-            let mut f_owd_tree = OrderStatisticsTree::new();
-            let mut b_owd_tree = OrderStatisticsTree::new();
-            let mut rpd_tree = OrderStatisticsTree::new();
+
+            let mut rtt_vec = Vec::new();
+            let mut f_owd_vec = Vec::new();
+            let mut b_owd_vec = Vec::new();
+            let mut rpd_vec = Vec::new();
+
+            let mut rtt_sum = 0.0;
+            let mut f_owd_sum = 0.0;
+            let mut b_owd_sum = 0.0;
+            let mut rpd_sum = 0.0;
 
             for packet in packets.iter() {
                 if let Some(rtt) = packet.calculate_rtt() {
-                    rtt_tree.insert(rtt.as_nanos() as f64);
+                    let rtt = rtt.as_nanos() as f64;
+                    rtt_vec.push(rtt);
+                    rtt_sum += rtt;
                 }
 
                 if let Some(owd) = packet.calculate_owd_forward() {
-                    f_owd_tree.insert(owd.as_nanos() as f64);
+                    let owd = owd.as_nanos() as f64;
+                    f_owd_vec.push(owd);
+                    f_owd_sum += owd;
                 }
 
                 if let Some(owd) = packet.calculate_owd_backward() {
-                    b_owd_tree.insert(owd.as_nanos() as f64);
+                    let owd = owd.as_nanos() as f64;
+                    b_owd_vec.push(owd);
+                    b_owd_sum += owd;
                 }
 
                 if let Some(rpd) = packet.calculate_rpd() {
-                    rpd_tree.insert(rpd.as_nanos() as f64);
+                    let rpd = rpd.as_nanos() as f64;
+                    rpd_vec.push(rpd);
+                    rpd_sum += rpd;
                 }
             }
 
-            let gamlr_offset = session.calculate_gamlr_offset(&f_owd_tree, &b_owd_tree);
+            // Sort the vectors for median and percentile calculations
+            rtt_vec.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+            f_owd_vec.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+            b_owd_vec.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+            rpd_vec.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+
+            let gamlr_offset = session.calculate_gamlr_offset(&f_owd_vec, &b_owd_vec);
 
             let network_results = NetworkStatistics {
-                avg_rtt: rtt_tree.mean(),
-                min_rtt: rtt_tree.min().unwrap_or_default(),
-                max_rtt: rtt_tree.max().unwrap_or_default(),
-                std_dev_rtt: rtt_tree.std_dev(),
-                median_rtt: rtt_tree.median().unwrap_or_default(),
-                low_percentile_rtt: rtt_tree.percentile(25.0).unwrap_or_default(),
-                high_percentile_rtt: rtt_tree.percentile(75.0).unwrap_or_default(),
-                avg_forward_owd: f_owd_tree.mean(),
-                min_forward_owd: f_owd_tree.min().unwrap_or_default(),
-                max_forward_owd: f_owd_tree.max().unwrap_or_default(),
-                std_dev_forward_owd: f_owd_tree.std_dev(),
-                median_forward_owd: f_owd_tree.median().unwrap_or_default(),
-                low_percentile_forward_owd: f_owd_tree.percentile(25.0).unwrap_or_default(),
-                high_percentile_forward_owd: f_owd_tree.percentile(75.0).unwrap_or_default(),
-                avg_backward_owd: b_owd_tree.mean(),
-                min_backward_owd: b_owd_tree.min().unwrap_or_default(),
-                max_backward_owd: b_owd_tree.max().unwrap_or_default(),
-                std_dev_backward_owd: b_owd_tree.std_dev(),
-                median_backward_owd: b_owd_tree.median().unwrap_or_default(),
-                low_percentile_backward_owd: b_owd_tree.percentile(25.0).unwrap_or_default(),
-                high_percentile_backward_owd: b_owd_tree.percentile(75.0).unwrap_or_default(),
-                avg_process_time: rpd_tree.mean(),
-                min_process_time: rpd_tree.min().unwrap_or_default(),
-                max_process_time: rpd_tree.max().unwrap_or_default(),
-                std_dev_process_time: rpd_tree.std_dev(),
-                median_process_time: rpd_tree.median().unwrap_or_default(),
-                low_percentile_process_time: rpd_tree.percentile(25.0).unwrap_or_default(),
-                high_percentile_process_time: rpd_tree.percentile(75.0).unwrap_or_default(),
+                avg_rtt: Some(rtt_sum / total_packets as f64),
+                min_rtt: rtt_vec
+                    .iter()
+                    .min_by(|a, b| a.partial_cmp(b).unwrap())
+                    .copied(),
+                max_rtt: rtt_vec
+                    .iter()
+                    .max_by(|a, b| a.partial_cmp(b).unwrap())
+                    .copied(),
+                std_dev_rtt: calculate_std_dev(&rtt_vec, rtt_sum / total_packets as f64),
+                median_rtt: median(&rtt_vec),
+                low_percentile_rtt: percentile(&rtt_vec, 25.0),
+                high_percentile_rtt: percentile(&rtt_vec, 75.0),
+                avg_forward_owd: Some(f_owd_sum / total_packets as f64),
+                min_forward_owd: f_owd_vec
+                    .iter()
+                    .min_by(|a, b| a.partial_cmp(b).unwrap())
+                    .copied(),
+                max_forward_owd: f_owd_vec
+                    .iter()
+                    .max_by(|a, b| a.partial_cmp(b).unwrap())
+                    .copied(),
+                std_dev_forward_owd: calculate_std_dev(
+                    &f_owd_vec,
+                    f_owd_sum / total_packets as f64,
+                ),
+                median_forward_owd: median(&f_owd_vec),
+                low_percentile_forward_owd: percentile(&f_owd_vec, 25.0),
+                high_percentile_forward_owd: percentile(&f_owd_vec, 75.0),
+                avg_backward_owd: Some(b_owd_sum / total_packets as f64),
+                min_backward_owd: b_owd_vec
+                    .iter()
+                    .min_by(|a, b| a.partial_cmp(b).unwrap())
+                    .copied(),
+                max_backward_owd: b_owd_vec
+                    .iter()
+                    .max_by(|a, b| a.partial_cmp(b).unwrap())
+                    .copied(),
+                std_dev_backward_owd: calculate_std_dev(
+                    &b_owd_vec,
+                    b_owd_sum / total_packets as f64,
+                ),
+                median_backward_owd: median(&b_owd_vec),
+                low_percentile_backward_owd: percentile(&b_owd_vec, 25.0),
+                high_percentile_backward_owd: percentile(&b_owd_vec, 75.0),
+                avg_process_time: Some(rpd_sum / total_packets as f64),
+                min_process_time: rpd_vec
+                    .iter()
+                    .min_by(|a, b| a.partial_cmp(b).unwrap())
+                    .copied(),
+                max_process_time: rpd_vec
+                    .iter()
+                    .max_by(|a, b| a.partial_cmp(b).unwrap())
+                    .copied(),
+                std_dev_process_time: calculate_std_dev(&rpd_vec, rpd_sum / total_packets as f64),
+                median_process_time: median(&rpd_vec),
+                low_percentile_process_time: percentile(&rpd_vec, 25.0),
+                high_percentile_process_time: percentile(&rpd_vec, 75.0),
                 forward_loss,
                 backward_loss,
                 total_loss,
@@ -214,6 +261,34 @@ fn calculate_session_results(rc_sessions: Rc<RefCell<Vec<Session>>>) -> Vec<Sess
         .collect()
 }
 
+fn median(v: &[f64]) -> Option<f64> {
+    if v.is_empty() {
+        return None;
+    }
+    let mid = v.len() / 2;
+    if v.len() % 2 == 0 {
+        Some((v[mid - 1] + v[mid]) / 2.0)
+    } else {
+        Some(v[mid])
+    }
+}
+
+fn percentile(v: &[f64], percentile: f64) -> Option<f64> {
+    if v.is_empty() {
+        return None;
+    }
+    let idx = (percentile / 100.0 * (v.len() - 1) as f64).round() as usize;
+    Some(v[idx])
+}
+
+fn calculate_std_dev(v: &[f64], mean: f64) -> Option<f64> {
+    if v.is_empty() {
+        return None;
+    }
+    let variance = v.iter().map(|&value| (value - mean).powi(2)).sum::<f64>() / v.len() as f64;
+    Some(variance.sqrt())
+}
+
 fn create_tx_callback(
     event_loop: &mut EventLoop<TimestampedUdpSocket>,
     timer_spec: Itimerspec,
@@ -224,20 +299,20 @@ fn create_tx_callback(
     let _tx_token = event_loop.add_timer(&timer_spec, &rx_token, move |inner_socket, _| {
         let mut received_bytes = vec![];
         let mut timestamps = vec![];
-        let timestamp = NtpTimestamp::try_from(DateTime::utc_now())?;
 
         tx_sessions.borrow().iter().for_each(|session| {
+            let send_timestamp = NtpTimestamp::try_from(DateTime::utc_now()).unwrap();
             let twamp_test_message = SenderMessage::new(
                 session.seq_number.load(Ordering::SeqCst),
-                timestamp,
-                ErrorEstimate::new(1, 0, 1, 1).unwrap(),
+                send_timestamp,
+                ErrorEstimate::new(1, 0, 1, 1),
                 vec![0u8; MIN_UNAUTH_PADDING + padding],
-            )
-            .map_err(|e| CommonError::from(e.to_string()));
+            );
 
             log::debug!("Twamp Sender Message {:?}", twamp_test_message);
+
             let (sent, timestamp) = inner_socket
-                .send_to(&session.socket_address, twamp_test_message.unwrap())
+                .send_to(&session.socket_address, twamp_test_message)
                 .unwrap();
 
             received_bytes.push(sent);
@@ -249,10 +324,16 @@ fn create_tx_callback(
             .iter()
             .zip(timestamps.iter())
             .try_for_each(|(session, timestamp)| {
+                log::info!(
+                    "Session: {:?}, timestamp: {:?}, seq: {:?}",
+                    session.socket_address,
+                    timestamp,
+                    session.seq_number
+                );
                 let twamp_test_message = SenderMessage {
                     sequence_number: session.seq_number.load(Ordering::SeqCst),
                     timestamp: NtpTimestamp::from(*timestamp),
-                    error_estimate: ErrorEstimate::new(1, 1, 1, 1).unwrap(),
+                    error_estimate: ErrorEstimate::new(1, 1, 1, 1),
                     padding: Vec::new(),
                 };
                 session.add_to_sent(Box::new(twamp_test_message))
@@ -262,7 +343,7 @@ fn create_tx_callback(
     Ok(0)
 }
 
-fn create_tx_correct_callback(
+fn _create_tx_correct_callback(
     event_loop: &mut EventLoop<TimestampedUdpSocket>,
     timer_spec: Itimerspec,
     rx_token: Token,
@@ -288,7 +369,7 @@ fn create_tx_correct_callback(
                 .step_by(length)
                 .map(|date_time| date_time.to_owned());
 
-            tx_sessions.borrow_mut()[i].update_tx_timestamps(session_timestamps)?;
+            tx_sessions.borrow_mut()[i]._update_tx_timestamps(session_timestamps)?;
         }
         Ok(0)
     })?;
@@ -303,13 +384,18 @@ fn create_rx_callback(
     let rx_token = event_loop.register_event_source(my_socket, move |inner_socket, _| {
         let buffer = &mut [0; 1024];
 
-        if let Ok((result, socket_address, timestamp)) = inner_socket.receive_from(buffer) {
-            log::debug!("Received {} bytes from {}", result, socket_address);
+        while let Ok((result, socket_address, timestamp)) = inner_socket.receive_from(buffer) {
             let received_bytes = &buffer[..result];
             let twamp_test_message: &Result<(ReflectedMessage, usize), CommonError> =
                 &ReflectedMessage::try_from_be_bytes(received_bytes).map_err(|e| e.into());
             log::debug!("Twamp Response Message {:?}", twamp_test_message);
             if let Ok(twamp_message) = twamp_test_message {
+                log::warn!(
+                    "Received from {} at {}, seq {:?}",
+                    socket_address,
+                    timestamp,
+                    twamp_message.0.reflector_sequence_number
+                );
                 let borrowed_sessions = rx_sessions.borrow();
                 let session_option = borrowed_sessions
                     .iter()
@@ -322,8 +408,8 @@ fn create_rx_callback(
                     log::debug!("Latest {}", json_result);
                 }
             }
-            return Ok(result as i32);
-        };
+            // return Ok(result as i32);
+        }
         Ok(0)
     })?;
     Ok(rx_token)

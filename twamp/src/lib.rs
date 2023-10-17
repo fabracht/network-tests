@@ -1,11 +1,10 @@
-use crate::twamp_control::control::Control;
-use crate::twamp_control::Configuration as ControlConfiguration;
+use std::net::SocketAddr;
+
 use crate::twamp_light_reflector::reflector::Reflector;
 use crate::twamp_light_reflector::Configuration as ReflectorConfiguration;
 use crate::twamp_light_sender::twamp_light::TwampLight;
 use crate::twamp_light_sender::Configuration as LightConfiguration;
 
-use network_commons::host::Host;
 use network_commons::{error::CommonError, Strategy};
 use serde::{Deserialize, Serialize};
 pub use twamp_light_sender::result::TwampResult;
@@ -18,7 +17,7 @@ mod twamp_light_sender;
 #[derive(Validate, Serialize, Deserialize, Debug, PartialEq, Clone, Default)]
 
 pub struct TwampConfiguration {
-    pub hosts: Option<Vec<Host>>,
+    pub hosts: Option<Vec<SocketAddr>>,
     pub mode: String,
     pub source_ip_address: Option<String>,
     pub collection_period: Option<u64>,
@@ -43,7 +42,7 @@ impl Twamp {
             .hosts
             .iter()
             .flat_map(|host| host.clone())
-            .collect::<Vec<Host>>();
+            .collect::<Vec<SocketAddr>>();
         match self.configuration.mode.as_str() {
             "LIGHT_SENDER" => {
                 let configuration = LightConfiguration::new(
@@ -80,22 +79,22 @@ impl Twamp {
                     .map_err(CommonError::ValidationError)?;
                 Ok(Box::new(Reflector::new(configuration)))
             }
-            "FULL_SENDER" => unimplemented!(),
-            "FULL_REFLECTOR" => {
-                let configuration = ControlConfiguration {
-                    mode: self.configuration.mode.clone(),
-                    source_ip_address: self
-                        .configuration
-                        .clone()
-                        .source_ip_address
-                        .unwrap_or_default(),
-                    ref_wait: self.configuration.last_message_timeout.unwrap_or(900),
-                };
-                configuration
-                    .validate()
-                    .map_err(CommonError::ValidationError)?;
-                Ok(Box::new(Control::new(configuration)))
-            }
+            // "FULL_SENDER" => unimplemented!(),
+            // "FULL_REFLECTOR" => {
+            //     let configuration = ControlConfiguration {
+            //         mode: self.configuration.mode.clone(),
+            //         source_ip_address: self
+            //             .configuration
+            //             .clone()
+            //             .source_ip_address
+            //             .unwrap_or_default(),
+            //         ref_wait: self.configuration.last_message_timeout.unwrap_or(900),
+            //     };
+            //     configuration
+            //         .validate()
+            //         .map_err(CommonError::ValidationError)?;
+            //     Ok(Box::new(Control::new(configuration)))
+            // }
             _ => panic!("No such mode"),
         }
     }

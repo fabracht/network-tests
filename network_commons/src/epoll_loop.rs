@@ -91,10 +91,8 @@ impl<T: AsRawFd + for<'a> Socket<'a, T> + 'static> EventLoopTrait<T> for LinuxEv
             while let Ok((event_source, callback)) = self.registration_receiver.try_recv() {
                 let _inner_token = self.register_event_source(event_source, callback)?;
             }
-            self.poll.poll(
-                &mut self.events,
-                Some(std::time::Duration::from_millis(100)),
-            )?;
+            self.poll
+                .poll(&mut self.events, Some(std::time::Duration::from_millis(10)))?;
             for event in self.events.iter() {
                 if event.is_readable() {
                     let token = event.token();
