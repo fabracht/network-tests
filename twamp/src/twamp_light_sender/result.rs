@@ -7,62 +7,146 @@ use super::NETWORK_PRECISION;
 
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub struct NetworkStatistics {
-    #[serde(serialize_with = "round_f64_with_precision")]
-    pub avg_rtt: f64,
-    #[serde(serialize_with = "round_f64_with_precision")]
-    pub min_rtt: f64,
-    #[serde(serialize_with = "round_f64_with_precision")]
-    pub max_rtt: f64,
-    #[serde(serialize_with = "round_f64_with_precision")]
-    pub std_dev_rtt: f64,
-    #[serde(serialize_with = "round_f64_with_precision")]
-    pub median_rtt: f64,
-    #[serde(serialize_with = "round_f64_with_precision")]
-    pub low_percentile_rtt: f64,
-    #[serde(serialize_with = "round_f64_with_precision")]
-    pub high_percentile_rtt: f64,
-    #[serde(serialize_with = "round_f64_with_precision")]
-    pub avg_forward_owd: f64,
-    #[serde(serialize_with = "round_f64_with_precision")]
-    pub min_forward_owd: f64,
-    #[serde(serialize_with = "round_f64_with_precision")]
-    pub max_forward_owd: f64,
-    #[serde(serialize_with = "round_f64_with_precision")]
-    pub std_dev_forward_owd: f64,
-    #[serde(serialize_with = "round_f64_with_precision")]
-    pub median_forward_owd: f64,
-    #[serde(serialize_with = "round_f64_with_precision")]
-    pub low_percentile_forward_owd: f64,
-    #[serde(serialize_with = "round_f64_with_precision")]
-    pub high_percentile_forward_owd: f64,
-    #[serde(serialize_with = "round_f64_with_precision")]
-    pub avg_backward_owd: f64,
-    #[serde(serialize_with = "round_f64_with_precision")]
-    pub min_backward_owd: f64,
-    #[serde(serialize_with = "round_f64_with_precision")]
-    pub max_backward_owd: f64,
-    #[serde(serialize_with = "round_f64_with_precision")]
-    pub std_dev_backward_owd: f64,
-    #[serde(serialize_with = "round_f64_with_precision")]
-    pub median_backward_owd: f64,
-    #[serde(serialize_with = "round_f64_with_precision")]
-    pub low_percentile_backward_owd: f64,
-    #[serde(serialize_with = "round_f64_with_precision")]
-    pub high_percentile_backward_owd: f64,
-    #[serde(serialize_with = "round_f64_with_precision")]
-    pub avg_process_time: f64,
-    #[serde(serialize_with = "round_f64_with_precision")]
-    pub min_process_time: f64,
-    #[serde(serialize_with = "round_f64_with_precision")]
-    pub max_process_time: f64,
-    #[serde(serialize_with = "round_f64_with_precision")]
-    pub std_dev_process_time: f64,
-    #[serde(serialize_with = "round_f64_with_precision")]
-    pub median_process_time: f64,
-    #[serde(serialize_with = "round_f64_with_precision")]
-    pub low_percentile_process_time: f64,
-    #[serde(serialize_with = "round_f64_with_precision")]
-    pub high_percentile_process_time: f64,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "round_option_f64_with_precision"
+    )]
+    pub avg_rtt: Option<f64>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "round_option_f64_with_precision"
+    )]
+    pub min_rtt: Option<f64>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "round_option_f64_with_precision"
+    )]
+    pub max_rtt: Option<f64>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "round_option_f64_with_precision"
+    )]
+    pub std_dev_rtt: Option<f64>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "round_option_f64_with_precision"
+    )]
+    pub median_rtt: Option<f64>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "round_option_f64_with_precision"
+    )]
+    pub low_percentile_rtt: Option<f64>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "round_option_f64_with_precision"
+    )]
+    pub high_percentile_rtt: Option<f64>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "round_option_f64_with_precision"
+    )]
+    pub avg_forward_owd: Option<f64>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "round_option_f64_with_precision"
+    )]
+    pub min_forward_owd: Option<f64>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "round_option_f64_with_precision"
+    )]
+    pub max_forward_owd: Option<f64>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "round_option_f64_with_precision"
+    )]
+    pub std_dev_forward_owd: Option<f64>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "round_option_f64_with_precision"
+    )]
+    pub median_forward_owd: Option<f64>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "round_option_f64_with_precision"
+    )]
+    pub low_percentile_forward_owd: Option<f64>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "round_option_f64_with_precision"
+    )]
+    pub high_percentile_forward_owd: Option<f64>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "round_option_f64_with_precision"
+    )]
+    pub avg_backward_owd: Option<f64>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "round_option_f64_with_precision"
+    )]
+    pub min_backward_owd: Option<f64>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "round_option_f64_with_precision"
+    )]
+    pub max_backward_owd: Option<f64>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "round_option_f64_with_precision"
+    )]
+    pub std_dev_backward_owd: Option<f64>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "round_option_f64_with_precision"
+    )]
+    pub median_backward_owd: Option<f64>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "round_option_f64_with_precision"
+    )]
+    pub low_percentile_backward_owd: Option<f64>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "round_option_f64_with_precision"
+    )]
+    pub high_percentile_backward_owd: Option<f64>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "round_option_f64_with_precision"
+    )]
+    pub avg_process_time: Option<f64>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "round_option_f64_with_precision"
+    )]
+    pub min_process_time: Option<f64>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "round_option_f64_with_precision"
+    )]
+    pub max_process_time: Option<f64>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "round_option_f64_with_precision"
+    )]
+    pub std_dev_process_time: Option<f64>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "round_option_f64_with_precision"
+    )]
+    pub median_process_time: Option<f64>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "round_option_f64_with_precision"
+    )]
+    pub low_percentile_process_time: Option<f64>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "round_option_f64_with_precision"
+    )]
+    pub high_percentile_process_time: Option<f64>,
     pub forward_loss: u32,
     pub backward_loss: u32,
     pub total_loss: u32,

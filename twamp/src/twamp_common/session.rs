@@ -27,9 +27,9 @@ pub struct Session {
 
 impl Session {
     /// Creates a new `Session` from a `Host`.
-    pub fn new(host: &SocketAddr) -> Result<Self, CommonError> {
+    pub fn new(socket_address: &SocketAddr) -> Result<Self, CommonError> {
         Ok(Self {
-            socket_address: host.clone(),
+            socket_address: socket_address.clone(),
             seq_number: AtomicU32::new(0),
             results: Rc::new(RwLock::new(Vec::new())),
             last_updated: 0,
@@ -95,7 +95,7 @@ impl Session {
     }
 
     /// Updates the transmit timestamps for the packet results based on the provided iterator.
-    pub fn update_tx_timestamps(
+    pub fn _update_tx_timestamps(
         &mut self,
         mut timestamps: impl Iterator<Item = DateTime>,
     ) -> Result<(), CommonError> {
@@ -169,12 +169,6 @@ impl Session {
         if forward_owd.len() < 5 || backward_owd.len() < 5 {
             return None;
         }
-        // if results.is_empty() || results.len() < 5 {
-        //     return None;
-        // }
-
-        // let forward_owd: Vec<f64> = f_owd_tree.iter(Inorder).map(|node| node.value()).collect();
-        // let backward_owd: Vec<f64> = b_owd_tree.iter(Inorder).map(|node| node.value()).collect();
 
         // Ensure that we have complete chunks for the estimate
         let f_chunks: Vec<_> = forward_owd
