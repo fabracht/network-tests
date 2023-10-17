@@ -296,10 +296,7 @@ fn create_tx_callback(
     tx_sessions: Rc<RefCell<Vec<Session>>>,
     padding: usize,
 ) -> Result<usize, CommonError> {
-    let _tx_token = event_loop.add_timer(&timer_spec, &rx_token, move |inner_socket, _| {
-        let mut received_bytes = vec![];
-        let mut timestamps = vec![];
-
+    let tx_token = event_loop.add_timer(&timer_spec, &rx_token, move |inner_socket, _| {
         tx_sessions.borrow().iter().for_each(|session| {
             let send_timestamp = NtpTimestamp::try_from(DateTime::utc_now()).unwrap();
             let twamp_test_message = SenderMessage::new(
@@ -311,36 +308,24 @@ fn create_tx_callback(
 
             log::debug!("Twamp Sender Message {:?}", twamp_test_message);
 
-            let (sent, timestamp) = inner_socket
-                .send_to(&session.socket_address, twamp_test_message)
-                .unwrap();
-
-            received_bytes.push(sent);
-            timestamps.push(timestamp);
-        });
-
-        tx_sessions
-            .borrow()
-            .iter()
-            .zip(timestamps.iter())
-            .try_for_each(|(session, timestamp)| {
-                log::info!(
-                    "Session: {:?}, timestamp: {:?}, seq: {:?}",
-                    session.socket_address,
-                    timestamp,
-                    session.seq_number
-                );
+            if let Ok((_sent, timestamp)) =
+                inner_socket.send_to(&session.socket_address, twamp_test_message)
+            {
                 let twamp_test_message = SenderMessage {
                     sequence_number: session.seq_number.load(Ordering::SeqCst),
-                    timestamp: NtpTimestamp::from(*timestamp),
+                    timestamp: NtpTimestamp::from(timestamp),
                     error_estimate: ErrorEstimate::new(1, 1, 1, 1),
                     padding: Vec::new(),
                 };
-                session.add_to_sent(Box::new(twamp_test_message))
-            })?;
+                session
+                    .add_to_sent(Box::new(twamp_test_message))
+                    .expect("Failed to record message to in vector");
+            }
+        });
+
         Ok(0)
     })?;
-    Ok(0)
+    Ok(tx_token.0)
 }
 
 fn _create_tx_correct_callback(
