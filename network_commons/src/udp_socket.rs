@@ -158,7 +158,7 @@ impl TimestampedUdpSocket {
 
     pub fn receive_from_multiple(
         &self,
-        buffers: &mut Vec<[u8; 1024]>,
+        buffers: &mut [[u8; 1024]],
         num_messages: usize,
     ) -> Result<Vec<(usize, SocketAddr, DateTime)>, io::Error> {
         let fd = self.as_raw_fd();

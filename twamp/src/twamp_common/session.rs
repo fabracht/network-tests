@@ -29,7 +29,7 @@ impl Session {
     /// Creates a new `Session` from a `Host`.
     pub fn new(socket_address: &SocketAddr) -> Result<Self, CommonError> {
         Ok(Self {
-            socket_address: socket_address.clone(),
+            socket_address: *socket_address,
             seq_number: AtomicU32::new(0),
             results: Rc::new(RwLock::new(Vec::new())),
             last_updated: 0,
