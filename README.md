@@ -29,15 +29,13 @@ Creating a TWAMP sender can be done with the following configuration:
 ```json
 {
   "hosts": [
-    {
-      "ip": "127.0.0.1",
-      "port": 45571
-    }
+    "127.0.0.1:45571",
+    "127.0.0.1:45572"
   ],
   "mode": "LIGHT_SENDER",
-  "source_ip_address": "0.0.0.0:45572",
+  "source_ip_address": "127.0.0.1:45573",
   "collection_period": 10,
-  "packet_interval": 500,
+  "packet_interval": 100,
   "padding": 41,
   "ref_wait": 1,
   "last_message_timeout": 1
@@ -49,7 +47,7 @@ You'll also need a reflector:
 ```json
 {
   "mode": "LIGHT_REFLECTOR",
-  "source_ip_address": "0.0.0.0:45571",
+  "source_ip_address": "0.0.0.0:45572",
   "ref_wait": 2
 }
 ```
