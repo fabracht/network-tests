@@ -23,7 +23,7 @@ use crate::{
 /// # Type Parameters
 ///
 /// * `T`: A type that implements both `AsRawFd` and `Socket`. This is the type of socket that will be managed by the event loop.
-pub struct LinuxEventLoop<T: AsRawFd + for<'a> Socket<'a, T>> {
+pub struct LinuxEventLoop<T: AsRawFd + Socket<T>> {
     poll: Poll,
     events: Events,
     /// A mapping from tokens to registered I/O sources.
@@ -38,7 +38,7 @@ pub struct LinuxEventLoop<T: AsRawFd + for<'a> Socket<'a, T>> {
     overtime: Option<Itimerspec>,
 }
 
-impl<T: AsRawFd + for<'a> Socket<'a, T>> LinuxEventLoop<T> {
+impl<T: AsRawFd + Socket<T>> LinuxEventLoop<T> {
     /// Returns a sender for the channel used to communicate with the event loop.
     ///
     /// # Returns
@@ -58,7 +58,7 @@ impl<T: AsRawFd + for<'a> Socket<'a, T>> LinuxEventLoop<T> {
     }
 }
 
-impl<T: AsRawFd + for<'a> Socket<'a, T> + 'static> EventLoopTrait<T> for LinuxEventLoop<T> {
+impl<T: AsRawFd + Socket<T> + 'static> EventLoopTrait<T> for LinuxEventLoop<T> {
     fn new(event_capacity: usize) -> Result<Self, CommonError> {
         // Create the poll
         let poll = Poll::new()?;

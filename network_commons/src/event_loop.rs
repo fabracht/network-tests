@@ -40,7 +40,7 @@ impl Itimerspec {
 ///
 /// This trait is implemented by types that can be used to manage and
 /// control event-driven systems, such as network services.
-pub trait EventLoopTrait<T: AsRawFd + for<'a> Socket<'a, T>> {
+pub trait EventLoopTrait<T: AsRawFd + Socket<T>> {
     /// Creates a new event loop instance with the given capacity.
     ///
     /// # Errors
