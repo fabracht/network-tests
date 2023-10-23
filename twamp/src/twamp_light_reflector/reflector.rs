@@ -85,7 +85,7 @@ impl Strategy<TwampResult, CommonError> for Reflector {
                     timestamp,
                     session.seq_number
                 );
-                session.add_to_sent(Box::new(reflected_message))?;
+                session.add_to_sent(reflected_message)?;
             } else {
                 // Create session
                 let session = Session::from_socket_address(&socket_address);
@@ -107,7 +107,7 @@ impl Strategy<TwampResult, CommonError> for Reflector {
                 // Send message
                 inner_socket.send_to(&socket_address, reflected_message.clone())?;
                 // Add message results to session
-                session.add_to_sent(Box::new(reflected_message))?;
+                session.add_to_sent(reflected_message)?;
                 // Store session
                 borrowed_sessions.push(session);
             }

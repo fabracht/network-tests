@@ -6,7 +6,7 @@ use std::net::SocketAddr;
 use std::os::fd::{AsRawFd, RawFd};
 
 /// A trait representing a socket that can send and receive data.
-pub trait Socket<'a, T: AsRawFd>: Sized + AsRawFd {
+pub trait Socket<T: AsRawFd>: Sized + AsRawFd {
     /// Creates a new instance of the socket from the given raw file descriptor.
     ///
     /// # Safety

@@ -98,17 +98,17 @@ impl Strategy<TwampResult, CommonError> for TwampLight {
         )?;
 
         // // This configures the tx timestamp correction socket timer.
-        // let tx_correction_timer_spec = Itimerspec {
-        //     it_interval: Duration::from_millis(10),
-        //     it_value: Duration::from_nanos(1),
-        // };
+        let tx_correction_timer_spec = Itimerspec {
+            it_interval: Duration::from_millis(10),
+            it_value: Duration::from_nanos(1),
+        };
 
-        // create_tx_correct_callback(
-        //     &mut event_loop,
-        //     tx_correction_timer_spec,
-        //     rx_token,
-        //     rc_sessions.clone(),
-        // )?;
+        create_tx_correct_callback(
+            &mut event_loop,
+            tx_correction_timer_spec,
+            rx_token,
+            rc_sessions.clone(),
+        )?;
 
         // Create the deadline event
         let duration_spec = Itimerspec {
@@ -318,7 +318,7 @@ fn create_tx_callback(
                     padding: Vec::new(),
                 };
                 session
-                    .add_to_sent(Box::new(twamp_test_message))
+                    .add_to_sent(twamp_test_message)
                     .expect("Failed to record message to in vector");
             }
         });
@@ -328,7 +328,7 @@ fn create_tx_callback(
     Ok(tx_token.0)
 }
 
-fn _create_tx_correct_callback(
+fn create_tx_correct_callback(
     event_loop: &mut EventLoop<TimestampedUdpSocket>,
     timer_spec: Itimerspec,
     rx_token: Token,
@@ -338,6 +338,7 @@ fn _create_tx_correct_callback(
         let mut tx_timestamps = vec![];
 
         while let Ok(error_messages) = inner_socket.receive_errors() {
+            // log::warn!("Received error messages {}", error_messages.len());
             error_messages
                 .iter()
                 .for_each(|(_res, _address, tx_timestamp)| {
@@ -354,7 +355,7 @@ fn _create_tx_correct_callback(
                 .step_by(length)
                 .map(|date_time| date_time.to_owned());
 
-            tx_sessions.borrow_mut()[i]._update_tx_timestamps(session_timestamps)?;
+            tx_sessions.borrow_mut()[i].update_tx_timestamps(session_timestamps)?;
         }
         Ok(0)
     })?;
@@ -367,33 +368,44 @@ fn create_rx_callback(
     rx_sessions: Rc<RefCell<Vec<Session>>>,
 ) -> Result<Token, CommonError> {
     let rx_token = event_loop.register_event_source(my_socket, move |inner_socket, _| {
-        let buffer = &mut [0; 1024];
+        // let buffer = &mut [0; 1024];
+        let buffers = &mut [[0; 1024]; 2];
+        while let Ok(response_vec) = inner_socket.receive_from_multiple(buffers, 2) {
+            response_vec.iter().enumerate().for_each(
+                |(i, (result, socket_address, timespec_ref))| {
+                    // log::warn!("result {}, sock_addr {:?}", result, socket_address,);
+                    let received_bytes = &buffers[i][..*result];
+                    // received_bytes
+                    //     .iter()
+                    //     .for_each(|byte| print!("{:08b} ", byte));
+                    let twamp_test_message: &Result<(ReflectedMessage, usize), CommonError> =
+                        &ReflectedMessage::try_from_be_bytes(received_bytes).map_err(|e| e.into());
+                    log::debug!("Twamp Response Message {:?}", twamp_test_message);
+                    if let Ok(twamp_message) = twamp_test_message {
+                        // log::warn!(
+                        //     "Received from {} , seq {:?}",
+                        //     socket_address,
+                        //     twamp_message.0.reflector_sequence_number
+                        // );
+                        let borrowed_sessions = rx_sessions.borrow();
+                        let session_option = borrowed_sessions
+                            .iter()
+                            .find(|session| session.socket_address == *socket_address);
+                        if let Some(session) = session_option {
+                            session
+                                .add_to_received(
+                                    twamp_message.0.to_owned(),
+                                    DateTime::from_timespec(*timespec_ref),
+                                )
+                                .unwrap();
+                            let latest_result = session.get_latest_result();
 
-        while let Ok((result, socket_address, timestamp)) = inner_socket.receive_from(buffer) {
-            let received_bytes = &buffer[..result];
-            let twamp_test_message: &Result<(ReflectedMessage, usize), CommonError> =
-                &ReflectedMessage::try_from_be_bytes(received_bytes).map_err(|e| e.into());
-            log::debug!("Twamp Response Message {:?}", twamp_test_message);
-            if let Ok(twamp_message) = twamp_test_message {
-                log::warn!(
-                    "Received from {} at {}, seq {:?}",
-                    socket_address,
-                    timestamp,
-                    twamp_message.0.reflector_sequence_number
-                );
-                let borrowed_sessions = rx_sessions.borrow();
-                let session_option = borrowed_sessions
-                    .iter()
-                    .find(|session| session.socket_address == socket_address);
-                if let Some(session) = session_option {
-                    session.add_to_received(twamp_message.0.to_owned(), timestamp)?;
-                    let latest_result = session.get_latest_result();
-
-                    let json_result = serde_json::to_string_pretty(&latest_result).unwrap();
-                    log::debug!("Latest {}", json_result);
-                }
-            }
-            // return Ok(result as i32);
+                            let json_result = serde_json::to_string_pretty(&latest_result).unwrap();
+                            log::debug!("Latest {}", json_result);
+                        }
+                    }
+                },
+            );
         }
         Ok(0)
     })?;

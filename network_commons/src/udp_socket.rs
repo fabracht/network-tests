@@ -1,12 +1,13 @@
 use bebytes::BeBytes;
 use libc::{
-    in6_addr, iovec, mmsghdr, msghdr, recvfrom, recvmmsg, sendmsg, sockaddr_in, sockaddr_in6,
-    sockaddr_storage, timespec,
+    cmsghdr, in6_addr, iovec, mmsghdr, msghdr, recvfrom, sendmsg, sockaddr_in, sockaddr_in6,
+    sockaddr_storage, timespec, CMSG_DATA, CMSG_FIRSTHDR, SCM_TIMESTAMPING, SOL_SOCKET,
 };
 
 use std::io::{self, IoSliceMut};
 use std::net::Ipv6Addr;
 use std::os::fd::{AsRawFd, RawFd};
+use std::os::raw::c_void;
 use std::{
     io::IoSlice,
     net::{IpAddr, Ipv4Addr, SocketAddr},
@@ -17,6 +18,10 @@ use crate::error::CommonError;
 use crate::libc_call;
 use crate::socket::Socket;
 use crate::time::{DateTime, ScmTimestamping};
+
+/// The maximum number of messages that can be received at once.
+const MAX_MSG: usize = 10;
+const CMSG_SPACE_SIZE: usize = 128;
 
 /// `TimestampedUdpSocket` is a wrapper around a raw file descriptor for a socket.
 /// It provides methods for sending and receiving data over UDP, with timestamping capabilities.
@@ -160,41 +165,40 @@ impl TimestampedUdpSocket {
         &self,
         buffers: &mut [[u8; 1024]],
         num_messages: usize,
-    ) -> Result<Vec<(usize, SocketAddr, DateTime)>, io::Error> {
+    ) -> Result<Vec<(usize, SocketAddr, timespec)>, io::Error> {
         let fd = self.as_raw_fd();
 
-        let mut msg_hdrs: Vec<mmsghdr> = Vec::with_capacity(num_messages);
-        let mut timestamps: Vec<timespec> = Vec::with_capacity(num_messages);
+        let mut msg_hdrs: Vec<mmsghdr> = vec![unsafe { std::mem::zeroed() }; num_messages];
+        let mut addr_storage: Vec<sockaddr_storage> =
+            vec![unsafe { std::mem::zeroed() }; num_messages];
+        let mut iovecs: Vec<iovec> = Vec::with_capacity(num_messages); // Create a vector to hold iovec structs
+        let mut cmsg_buffers: Vec<[u8; CMSG_SPACE_SIZE]> = vec![[0; CMSG_SPACE_SIZE]; num_messages];
 
-        for buffer in buffers.iter_mut().take(num_messages) {
-            let mut addr_storage: sockaddr_storage = unsafe { core::mem::zeroed() };
-            let mut msg_hdr: msghdr = unsafe { core::mem::zeroed() };
-
-            let iov = iovec {
+        for (i, buffer) in buffers.iter_mut().take(num_messages).enumerate() {
+            iovecs.push(iovec {
                 iov_base: buffer.as_mut_ptr() as *mut libc::c_void,
                 iov_len: buffer.len(),
-            };
-
-            msg_hdr.msg_name = &mut addr_storage as *mut _ as *mut libc::c_void;
-            msg_hdr.msg_namelen = core::mem::size_of_val(&addr_storage) as u32;
-            msg_hdr.msg_iov = &iov as *const iovec as *mut iovec;
-            msg_hdr.msg_iovlen = 1;
-
-            msg_hdrs.push(mmsghdr {
-                msg_hdr,
-                msg_len: 0,
             });
 
-            timestamps.push(unsafe { core::mem::zeroed() });
+            msg_hdrs[i].msg_hdr.msg_name = &mut addr_storage[i] as *mut _ as *mut libc::c_void;
+            msg_hdrs[i].msg_hdr.msg_namelen = std::mem::size_of_val(&addr_storage[i]) as u32;
+            msg_hdrs[i].msg_hdr.msg_iov = &mut iovecs[i] as *mut iovec; // Update this line
+            msg_hdrs[i].msg_hdr.msg_iovlen = 1;
+            msg_hdrs[i].msg_hdr.msg_control = cmsg_buffers[i].as_mut_ptr() as *mut c_void;
+            msg_hdrs[i].msg_hdr.msg_controllen = CMSG_SPACE_SIZE;
         }
 
+        let mut timeout = timespec {
+            tv_sec: 0,
+            tv_nsec: 1000000, // 1ms
+        };
         let result = unsafe {
-            recvmmsg(
+            libc::recvmmsg(
                 fd,
                 msg_hdrs.as_mut_ptr(),
                 num_messages as u32,
                 0,
-                timestamps.as_mut_ptr(),
+                &mut timeout as *mut timespec, // wait for 1ms
             )
         };
 
@@ -205,13 +209,10 @@ impl TimestampedUdpSocket {
         let mut received_data = Vec::new();
 
         for i in 0..result as usize {
-            let msg_hdr = &msg_hdrs[i].msg_hdr;
-            let addr_storage: sockaddr_storage =
-                unsafe { *(msg_hdr.msg_name as *mut sockaddr_storage) };
+            let addr_storage = &addr_storage[i];
             let socket_addr = match addr_storage.ss_family as i32 {
                 libc::AF_INET => {
-                    let sockaddr: &libc::sockaddr_in =
-                        unsafe { core::mem::transmute(&addr_storage) };
+                    let sockaddr: &sockaddr_in = unsafe { std::mem::transmute(addr_storage) };
                     let ip_bytes = sockaddr.sin_addr.s_addr.to_be_bytes();
                     SocketAddr::new(
                         IpAddr::V4(Ipv4Addr::new(
@@ -224,8 +225,7 @@ impl TimestampedUdpSocket {
                     )
                 }
                 libc::AF_INET6 => {
-                    let sockaddr: &libc::sockaddr_in6 =
-                        unsafe { core::mem::transmute(&addr_storage) };
+                    let sockaddr: &sockaddr_in6 = unsafe { std::mem::transmute(addr_storage) };
                     SocketAddr::new(
                         IpAddr::V6(Ipv6Addr::from(sockaddr.sin6_addr.s6_addr)),
                         sockaddr.sin6_port.to_be(),
@@ -233,12 +233,20 @@ impl TimestampedUdpSocket {
                 }
                 _ => continue, // Skip on unknown address family
             };
-
-            received_data.push((
-                msg_hdrs[i].msg_len as usize,
-                socket_addr,
-                DateTime::from_timespec(timestamps[i]),
-            ));
+            let msg_hdr = &msg_hdrs[i].msg_hdr;
+            let cmsg = unsafe { CMSG_FIRSTHDR(msg_hdr) };
+            if !cmsg.is_null() {
+                let cmsg = unsafe { &*(cmsg as *const cmsghdr) };
+                if cmsg.cmsg_level == SOL_SOCKET && cmsg.cmsg_type == SCM_TIMESTAMPING {
+                    let ts_ptr = unsafe { CMSG_DATA(cmsg) } as *const [timespec; 3];
+                    let ts = unsafe { *ts_ptr }[0]; // Index 0 for software timestamps
+                    received_data.push((msg_hdrs[i].msg_len as usize, socket_addr, ts));
+                    continue;
+                }
+            }
+            // You will need to use a different approach to retrieve timestamps.
+            // For now, I'm returning a dummy Timespec value.
+            // received_data.push((msg_hdrs[i].msg_len as usize, socket_addr));
         }
 
         Ok(received_data)
@@ -253,7 +261,6 @@ impl TimestampedUdpSocket {
     /// Returns a vector of tuples, each containing the size of the received message,
     /// the sender's address, and the timestamp of the message.
     pub fn receive_errors(&mut self) -> Result<Vec<(usize, SocketAddr, DateTime)>, CommonError> {
-        const MAX_MSG: usize = 10;
         let mut timestamps: Vec<(usize, SocketAddr, DateTime)> = Vec::new();
         let mut msgvec: [libc::mmsghdr; MAX_MSG] = unsafe { core::mem::zeroed() };
         let mut msg_buffers: [[u8; 4096]; MAX_MSG] = unsafe { core::mem::zeroed() };
@@ -324,11 +331,9 @@ impl TimestampedUdpSocket {
             }
             Ok(timestamps)
         } else {
-            let error = format!("Failed to get error messages: {}", res);
-            Err(CommonError::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                error,
-            )))
+            let last_os_error = std::io::Error::last_os_error();
+            // log::error!("{}", last_os_error);
+            Err(CommonError::Io(last_os_error))
         }
     }
 
@@ -417,7 +422,7 @@ impl TimestampedUdpSocket {
 }
 
 /// Implementation of the `Socket` trait for `TimestampedUdpSocket`.
-impl<'a> Socket<'a, TimestampedUdpSocket> for TimestampedUdpSocket {
+impl Socket<TimestampedUdpSocket> for TimestampedUdpSocket {
     unsafe fn from_raw_fd(fd: RawFd) -> TimestampedUdpSocket {
         Self { inner: fd }
     }

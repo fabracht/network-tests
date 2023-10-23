@@ -272,7 +272,7 @@ impl TimestampedTcpSocket {
     }
 }
 
-impl<'a> Socket<'a, TimestampedTcpSocket> for TimestampedTcpSocket {
+impl Socket<TimestampedTcpSocket> for TimestampedTcpSocket {
     unsafe fn from_raw_fd(fd: RawFd) -> TimestampedTcpSocket {
         Self { inner: fd }
     }

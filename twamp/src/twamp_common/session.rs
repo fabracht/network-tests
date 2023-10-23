@@ -64,7 +64,7 @@ impl Session {
     }
 
     /// Adds a sent packet to the session's results and increments the sequence number.
-    pub fn add_to_sent(&self, message: Box<dyn Message>) -> Result<(), CommonError> {
+    pub fn add_to_sent(&self, message: impl Message) -> Result<(), CommonError> {
         let packet_result = message.packet_results();
 
         self.results
@@ -76,7 +76,7 @@ impl Session {
 
     /// Gets the most recent result of this session.
     pub fn get_latest_result(&self) -> Option<TimestampsResult> {
-        let results = self.results.write().ok()?;
+        let results = self.results.read().ok()?;
         let last_result = results.last()?;
         Some(TimestampsResult {
             session: SessionPackets {
@@ -95,7 +95,7 @@ impl Session {
     }
 
     /// Updates the transmit timestamps for the packet results based on the provided iterator.
-    pub fn _update_tx_timestamps(
+    pub fn update_tx_timestamps(
         &mut self,
         mut timestamps: impl Iterator<Item = DateTime>,
     ) -> Result<(), CommonError> {
