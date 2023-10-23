@@ -79,7 +79,7 @@ impl Strategy<TwampResult, CommonError> for Reflector {
                 };
 
                 inner_socket.send_to(&socket_address, reflected_message.clone())?;
-                log::info!(
+                log::debug!(
                     "Received from: {:?}, timestamp: {:?}, seq: {:?}",
                     socket_address,
                     timestamp,

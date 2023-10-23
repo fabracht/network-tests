@@ -90,7 +90,7 @@ impl DateTime {
             nanos: ts.tv_nsec as u32,
         }
     }
-    //integer part being the number of seconds since the Unix epoch (January 1, 1970 at 00:00:00 UTC) and the fractional part being the number of nanoseconds.
+
     pub fn timestamp(&self) -> f64 {
         self.sec as f64 + (self.nanos as f64 / 1_000_000_000.0)
     }
