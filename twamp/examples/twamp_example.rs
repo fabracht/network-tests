@@ -1,3 +1,5 @@
+//! This example runs the TWAMP Light implementation with a configuration file as input
+
 use std::env;
 use std::fs::File;
 use std::io::Read;
