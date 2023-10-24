@@ -28,3 +28,4 @@ WORKDIR /home/$USERNAME
 
 # Install Rust components, if any
 RUN rustup component add rustfmt
+RUN rustup component add clippy
