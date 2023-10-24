@@ -20,6 +20,8 @@ use std::{cell::RefCell, net::SocketAddr, os::fd::IntoRawFd, rc::Rc, sync::atomi
 
 use super::result::{NetworkStatistics, SessionResult, TwampResult};
 
+/// The length of the iovec buffer for recvmmsg
+const BUFFER_LENGTH: usize = 2;
 pub struct TwampLight {
     /// List of host on which runs a reflecctors to perform the test
     hosts: Vec<SocketAddr>,
@@ -368,25 +370,15 @@ fn create_rx_callback(
     rx_sessions: Rc<RefCell<Vec<Session>>>,
 ) -> Result<Token, CommonError> {
     let rx_token = event_loop.register_event_source(my_socket, move |inner_socket, _| {
-        // let buffer = &mut [0; 1024];
-        let buffers = &mut vec![[0u8; 1024]; 2];
-        while let Ok(response_vec) = inner_socket.receive_from_multiple(buffers, buffers.len()) {
+        let buffers = &mut [[0u8; 1024]; BUFFER_LENGTH];
+        while let Ok(response_vec) = inner_socket.receive_from_multiple(buffers, BUFFER_LENGTH) {
             response_vec.iter().enumerate().for_each(
                 |(i, (result, socket_address, timespec_ref))| {
-                    // log::warn!("result {}, sock_addr {:?}", result, socket_address,);
                     let received_bytes = &buffers[i][..*result];
-                    // received_bytes
-                    //     .iter()
-                    //     .for_each(|byte| print!("{:08b} ", byte));
                     let twamp_test_message: &Result<(ReflectedMessage, usize), CommonError> =
                         &ReflectedMessage::try_from_be_bytes(received_bytes).map_err(|e| e.into());
                     log::debug!("Twamp Response Message {:?}", twamp_test_message);
                     if let Ok(twamp_message) = twamp_test_message {
-                        // log::warn!(
-                        //     "Received from {} , seq {:?}",
-                        //     socket_address,
-                        //     twamp_message.0.reflector_sequence_number
-                        // );
                         let borrowed_sessions = rx_sessions.borrow();
                         let session_option = borrowed_sessions
                             .iter()
