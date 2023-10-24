@@ -385,7 +385,10 @@ fn create_rx_callback(
                             .find(|session| session.socket_address == *socket_address);
                         if let Some(session) = session_option {
                             session
-                                .add_to_received(twamp_message.0.to_owned(), *timespec_ref)
+                                .add_to_received(
+                                    twamp_message.0.to_owned(),
+                                    DateTime::from_timespec(*timespec_ref),
+                                )
                                 .unwrap();
                             let latest_result = session.get_latest_result();
 

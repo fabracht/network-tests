@@ -330,23 +330,6 @@ dependencies = [
 
 [[package]]
 name = "network_commons"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9bdbb07fb28bf221d22d28f51cc43cf1faaa4dab107c4a304e98b3cab91d48d6"
-dependencies = [
- "bebytes",
- "libc",
- "log",
- "mio",
- "serde",
- "serde_json",
- "serde_yaml 0.9.25",
- "thiserror",
- "validator",
-]
-
-[[package]]
-name = "network_commons"
 version = "0.3.0"
 dependencies = [
  "bebytes",
@@ -653,7 +636,7 @@ dependencies = [
  "log",
  "log4rs",
  "mio",
- "network_commons 0.1.1",
+ "network_commons",
  "serde",
  "serde_json",
  "serde_yaml 0.9.25",
