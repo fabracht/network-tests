@@ -31,6 +31,7 @@ impl LcgRng {
         }
     }
 
+    /// Generates a random value drawn from a uniform distribution over the provided range.
     pub fn gen_range(&mut self, range: std::ops::Range<f64>) -> f64 {
         let random_u64 = self.next_u64();
         let random_f64 = random_u64 as f64 / u64::MAX as f64;
