@@ -1,6 +1,6 @@
 use bebytes::BeBytes;
 use libc::{
-    cmsghdr, in6_addr, iovec, mmsghdr, msghdr, recvfrom, sendmsg, sockaddr_in, sockaddr_in6,
+    cmsghdr, in6_addr, iovec, mmsghdr, msghdr, recvmsg, sendmsg, sockaddr_in, sockaddr_in6,
     sockaddr_storage, timespec, CMSG_DATA, CMSG_FIRSTHDR, SCM_TIMESTAMPING, SOL_SOCKET,
 };
 
@@ -310,7 +310,6 @@ impl TimestampedUdpSocket {
                             let data = libc::CMSG_DATA(cmsg);
                             let ts = (data as *const ScmTimestamping).as_ref().unwrap();
                             let timestamp = DateTime::from_timespec(ts.ts_realtime);
-
                             let sockaddr = &mut *(msg.msg_hdr.msg_name as *mut sockaddr_in);
                             let ip_bytes = sockaddr.sin_addr.s_addr.to_be_bytes();
                             let socket_addr = SocketAddr::new(
@@ -464,7 +463,7 @@ impl Socket<TimestampedUdpSocket> for TimestampedUdpSocket {
                 };
 
                 #[cfg(target_os = "linux")]
-                let msg = libc::msghdr {
+                let msg = msghdr {
                     msg_name: &mut sockaddr as *mut _ as *mut libc::c_void,
                     msg_namelen: core::mem::size_of_val(&sockaddr) as u32,
                     msg_iov: iov.as_ptr() as *mut libc::iovec,
@@ -491,7 +490,7 @@ impl Socket<TimestampedUdpSocket> for TimestampedUdpSocket {
                 };
 
                 #[cfg(target_os = "linux")]
-                let msg = libc::msghdr {
+                let msg = msghdr {
                     msg_name: &mut sockaddr as *mut _ as *mut libc::c_void,
                     msg_namelen: core::mem::size_of_val(&sockaddr) as u32,
                     msg_iov: iov.as_ptr() as *mut libc::iovec,
@@ -511,6 +510,7 @@ impl Socket<TimestampedUdpSocket> for TimestampedUdpSocket {
     fn receive(&self, _buffer: &mut [u8]) -> Result<(usize, DateTime), CommonError> {
         unimplemented!()
     }
+
     fn receive_from(
         &self,
         buffer: &mut [u8],
@@ -524,18 +524,16 @@ impl Socket<TimestampedUdpSocket> for TimestampedUdpSocket {
         msg.msg_namelen = core::mem::size_of_val(&addr_storage) as u32;
         msg.msg_iov = iov.as_ptr() as *mut iovec;
         msg.msg_iovlen = iov.len();
-        let utc_now = DateTime::utc_now();
+        const SPACE_SIZE: usize =
+            unsafe { libc::CMSG_SPACE(core::mem::size_of::<libc::timeval>() as u32) as usize };
+        let mut cmsg_space: [u8; SPACE_SIZE] = unsafe { core::mem::zeroed() };
+        msg.msg_control = cmsg_space.as_mut_ptr() as *mut libc::c_void;
+        msg.msg_controllen = cmsg_space.len();
 
-        let n = unsafe {
-            recvfrom(
-                fd,
-                buffer.as_mut_ptr() as *mut _,
-                buffer.len(),
-                0,
-                &mut addr_storage as *const _ as *mut _,
-                &mut core::mem::size_of_val(&addr_storage) as *const _ as *mut _,
-            )
-        };
+        // Getting the backup timestamp right before the recvmsg call
+        let mut timestamp = DateTime::utc_now();
+
+        let n = unsafe { recvmsg(fd, &mut msg, 0) };
         if n < 0 {
             return Err(CommonError::Io(std::io::Error::last_os_error()));
         }
@@ -564,6 +562,20 @@ impl Socket<TimestampedUdpSocket> for TimestampedUdpSocket {
             _ => return Err(CommonError::UnknownAddressFamily),
         };
 
-        Ok((n as usize, socket_addr, utc_now))
+        let mut cmsg = unsafe { libc::CMSG_FIRSTHDR(&msg) };
+        while !cmsg.is_null() {
+            unsafe {
+                if (*cmsg).cmsg_level == libc::SOL_SOCKET && (*cmsg).cmsg_type == libc::SO_TIMESTAMP
+                {
+                    let tv: &libc::timespec = core::mem::transmute(libc::CMSG_DATA(cmsg));
+                    // Overwrite the timestamp with the one from the kernel if available
+                    timestamp = DateTime::from_timespec(*tv);
+                    break;
+                }
+                cmsg = libc::CMSG_NXTHDR(&msg, cmsg);
+            }
+        }
+
+        Ok((n as usize, socket_addr, timestamp))
     }
 }
