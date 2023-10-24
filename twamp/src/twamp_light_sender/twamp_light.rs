@@ -369,8 +369,8 @@ fn create_rx_callback(
 ) -> Result<Token, CommonError> {
     let rx_token = event_loop.register_event_source(my_socket, move |inner_socket, _| {
         // let buffer = &mut [0; 1024];
-        let buffers = &mut [[0; 1024]; 2];
-        while let Ok(response_vec) = inner_socket.receive_from_multiple(buffers, 2) {
+        let buffers = &mut vec![[0u8; 1024]; 2];
+        while let Ok(response_vec) = inner_socket.receive_from_multiple(buffers, buffers.len()) {
             response_vec.iter().enumerate().for_each(
                 |(i, (result, socket_address, timespec_ref))| {
                     // log::warn!("result {}, sock_addr {:?}", result, socket_address,);
@@ -393,10 +393,7 @@ fn create_rx_callback(
                             .find(|session| session.socket_address == *socket_address);
                         if let Some(session) = session_option {
                             session
-                                .add_to_received(
-                                    twamp_message.0.to_owned(),
-                                    DateTime::from_timespec(*timespec_ref),
-                                )
+                                .add_to_received(twamp_message.0.to_owned(), *timespec_ref)
                                 .unwrap();
                             let latest_result = session.get_latest_result();
 
