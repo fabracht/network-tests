@@ -1,12 +1,13 @@
 use std::net::SocketAddr;
 
+use crate::twamp_control::Configuration as ControlConfiguration;
 use crate::twamp_light_reflector::reflector::Reflector;
 use crate::twamp_light_reflector::Configuration as ReflectorConfiguration;
 use crate::twamp_light_sender::twamp_light::TwampLight;
 use crate::twamp_light_sender::Configuration as LightConfiguration;
-
 use network_commons::{error::CommonError, Strategy};
 use serde::{Deserialize, Serialize};
+use twamp_control::control::Control;
 pub use twamp_light_sender::result::TwampResult;
 use validator::Validate;
 
@@ -79,22 +80,22 @@ impl Twamp {
                     .map_err(CommonError::ValidationError)?;
                 Ok(Box::new(Reflector::new(configuration)))
             }
-            // "FULL_SENDER" => unimplemented!(),
-            // "FULL_REFLECTOR" => {
-            //     let configuration = ControlConfiguration {
-            //         mode: self.configuration.mode.clone(),
-            //         source_ip_address: self
-            //             .configuration
-            //             .clone()
-            //             .source_ip_address
-            //             .unwrap_or_default(),
-            //         ref_wait: self.configuration.last_message_timeout.unwrap_or(900),
-            //     };
-            //     configuration
-            //         .validate()
-            //         .map_err(CommonError::ValidationError)?;
-            //     Ok(Box::new(Control::new(configuration)))
-            // }
+            "FULL_SENDER" => unimplemented!(),
+            "FULL_REFLECTOR" => {
+                let configuration = ControlConfiguration {
+                    mode: self.configuration.mode.clone(),
+                    source_ip_address: self
+                        .configuration
+                        .clone()
+                        .source_ip_address
+                        .unwrap_or_default(),
+                    ref_wait: self.configuration.last_message_timeout.unwrap_or(900),
+                };
+                configuration
+                    .validate()
+                    .map_err(CommonError::ValidationError)?;
+                Ok(Box::new(Control::new(configuration)))
+            }
             _ => panic!("No such mode"),
         }
     }
