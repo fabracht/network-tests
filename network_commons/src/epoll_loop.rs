@@ -13,7 +13,6 @@ use crate::{
     error::CommonError,
     event_loop::{itimerspec_to_libc, EventLoopTrait, Itimerspec, Source, TimedSource, Token},
     libc_call,
-    socket::Socket,
 };
 
 /// Event loop specifically tailored for Linux environments.
@@ -23,7 +22,7 @@ use crate::{
 /// # Type Parameters
 ///
 /// * `T`: A type that implements both `AsRawFd` and `Socket`. This is the type of socket that will be managed by the event loop.
-pub struct LinuxEventLoop<T: AsRawFd + Socket<T>> {
+pub struct LinuxEventLoop<T: AsRawFd> {
     poll: Poll,
     events: Events,
     /// A mapping from tokens to registered I/O sources.
@@ -38,7 +37,7 @@ pub struct LinuxEventLoop<T: AsRawFd + Socket<T>> {
     overtime: Option<Itimerspec>,
 }
 
-impl<T: AsRawFd + Socket<T>> LinuxEventLoop<T> {
+impl<T: AsRawFd> LinuxEventLoop<T> {
     /// Returns a sender for the channel used to communicate with the event loop.
     ///
     /// # Returns
@@ -58,7 +57,7 @@ impl<T: AsRawFd + Socket<T>> LinuxEventLoop<T> {
     }
 }
 
-impl<T: AsRawFd + Socket<T> + 'static> EventLoopTrait<T> for LinuxEventLoop<T> {
+impl<T: AsRawFd + 'static> EventLoopTrait<T> for LinuxEventLoop<T> {
     fn new(event_capacity: usize) -> Result<Self, CommonError> {
         // Create the poll
         let poll = Poll::new()?;

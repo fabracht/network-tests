@@ -1,4 +1,4 @@
-use crate::{error::CommonError, socket::Socket};
+use crate::error::CommonError;
 use core::time::Duration;
 use std::os::fd::{AsRawFd, RawFd};
 
@@ -40,7 +40,7 @@ impl Itimerspec {
 ///
 /// This trait is implemented by types that can be used to manage and
 /// control event-driven systems, such as network services.
-pub trait EventLoopTrait<T: AsRawFd + Socket<T>> {
+pub trait EventLoopTrait<T: AsRawFd> {
     /// Creates a new event loop instance with the given capacity.
     ///
     /// # Errors

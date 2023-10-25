@@ -567,7 +567,7 @@ impl Socket<TimestampedUdpSocket> for TimestampedUdpSocket {
             unsafe {
                 if (*cmsg).cmsg_level == libc::SOL_SOCKET && (*cmsg).cmsg_type == libc::SO_TIMESTAMP
                 {
-                    let tv: &libc::timespec = core::mem::transmute(libc::CMSG_DATA(cmsg));
+                    let tv: &libc::timespec = &*(libc::CMSG_DATA(cmsg) as *const libc::timespec);
                     // Overwrite the timestamp with the one from the kernel if available
                     timestamp = DateTime::from_timespec(*tv);
                     break;

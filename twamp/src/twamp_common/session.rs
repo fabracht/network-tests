@@ -1,9 +1,4 @@
-use network_commons::{
-    error::CommonError,
-    message::{Message, PacketResults, SessionPackets, TimestampsResult},
-    stats::offset_estimator::estimate,
-    time::DateTime,
-};
+use network_commons::{error::CommonError, stats::offset_estimator::estimate, time::DateTime};
 use std::{
     net::SocketAddr,
     rc::Rc,
@@ -12,6 +7,8 @@ use std::{
         RwLock,
     },
 };
+
+use super::message::{Message, PacketResults, SessionPackets, TimestampsResult};
 
 /// A `Session` represents a communication session with a `Host`.
 /// It maintains a sequence number and a collection of `PacketResults`.
