@@ -122,7 +122,9 @@ impl Strategy<TwampResult, CommonError> for TwampLight {
         let _termination_token = event_loop.add_duration(&duration_spec)?;
         log::info!("Starting test");
         // Run the event loop
+        // std::thread::spawn(move || {
         event_loop.run()?;
+        // });
         log::info!("Test finished");
         log::info!("Calculating results");
         let session_results = calculate_session_results(rc_sessions);

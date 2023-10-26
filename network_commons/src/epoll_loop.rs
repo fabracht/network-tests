@@ -5,7 +5,7 @@ use std::{
         fd::{AsRawFd, FromRawFd, RawFd},
         unix::net::UnixDatagram,
     },
-    sync::{atomic::AtomicUsize, mpsc},
+    sync::{atomic::AtomicUsize, mpsc, Arc, Mutex},
     time::Duration,
 };
 
@@ -26,9 +26,9 @@ pub struct LinuxEventLoop<T: AsRawFd> {
     poll: Poll,
     events: Events,
     /// A mapping from tokens to registered I/O sources.
-    sources: HashMap<Token, Source<T>>,
+    sources: Arc<Mutex<HashMap<Token, Source<T>>>>,
     /// A mapping from tokens to registered timed sources.
-    timed_sources: HashMap<Token, TimedSource<T>>,
+    timed_sources: Arc<Mutex<HashMap<Token, TimedSource<T>>>>,
     next_token: AtomicUsize,
     registration_sender: mpsc::Sender<Source<T>>,
     registration_receiver: mpsc::Receiver<Source<T>>,
@@ -67,8 +67,8 @@ impl<T: AsRawFd + 'static> EventLoopTrait<T> for LinuxEventLoop<T> {
         Ok(Self {
             poll,
             events,
-            sources: HashMap::new(),
-            timed_sources: HashMap::new(),
+            sources: Arc::new(Mutex::new(HashMap::new())),
+            timed_sources: Arc::new(Mutex::new(HashMap::new())),
             next_token: AtomicUsize::new(0),
             registration_sender,
             registration_receiver,
@@ -97,12 +97,20 @@ impl<T: AsRawFd + 'static> EventLoopTrait<T> for LinuxEventLoop<T> {
                     let token = event.token();
                     log::trace!("Event token {:?}", token);
                     let generate_token = Token(token.0);
-                    let sources = self.sources.get_mut(&generate_token);
-                    let timed_sources = self.timed_sources.get_mut(&generate_token);
+                    let sources = &mut self.sources.lock().map_err(|_| CommonError::Lock)?;
+                    let sources = sources.get_mut(&generate_token);
+                    let timed_sources =
+                        &mut self.timed_sources.lock().map_err(|_| CommonError::Lock)?;
+                    let timed_sources = timed_sources.get_mut(&generate_token);
                     if let Some((source, callback)) = sources {
                         callback(source, generate_token)?;
                     } else if let Some((timer_source, inner_token, callback)) = timed_sources {
-                        if let Some((source, _)) = self.sources.get_mut(inner_token) {
+                        if let Some((source, _)) = self
+                            .sources
+                            .lock()
+                            .map_err(|_| CommonError::Lock)?
+                            .get_mut(inner_token)
+                        {
                             callback(source, *inner_token)?;
                             reset_timer(timer_source)?;
                         }
@@ -112,9 +120,13 @@ impl<T: AsRawFd + 'static> EventLoopTrait<T> for LinuxEventLoop<T> {
                             log::debug!("No overtime");
                             break 'outer;
                         }
-                        self.timed_sources.iter().for_each(|(token, _)| {
-                            let _ = self.unregister_timed_event_source(Token(token.0));
-                        });
+                        self.timed_sources
+                            .lock()
+                            .map_err(|_| CommonError::Lock)?
+                            .iter()
+                            .for_each(|(token, _)| {
+                                let _ = self.unregister_timed_event_source(Token(token.0));
+                            });
                         log::debug!("Entering Overtime {:?}", self.overtime);
                         let _ = self.add_duration(&self.overtime.unwrap_or(Itimerspec {
                             it_interval: Duration::from_millis(500),
@@ -152,8 +164,15 @@ impl<T: AsRawFd + 'static> EventLoopTrait<T> for LinuxEventLoop<T> {
         self.poll
             .registry()
             .register(&mut timer_source, mio_token, Interest::READABLE)?;
-        if let Some((_source, _)) = self.sources.get_mut(token) {
+        if let Some((_source, _)) = self
+            .sources
+            .lock()
+            .map_err(|_| CommonError::Lock)?
+            .get_mut(token)
+        {
             self.timed_sources
+                .lock()
+                .map_err(|_| CommonError::Lock)?
                 .insert(new_token, (timer_fd, *token, Box::new(callback)));
         }
 
@@ -190,16 +209,25 @@ impl<T: AsRawFd + 'static> EventLoopTrait<T> for LinuxEventLoop<T> {
         let mut source = SourceFd(binding);
         let generate_token = self.generate_token();
         let token = mio::Token(generate_token.0);
-        self.poll
-            .registry()
-            .register(&mut source, token, Interest::READABLE)?;
+        self.poll.registry().register(
+            &mut source,
+            token,
+            Interest::READABLE | Interest::WRITABLE,
+        )?;
         self.sources
+            .lock()
+            .map_err(|_| CommonError::Lock)?
             .insert(generate_token, (event_source, Box::new(callback)));
         Ok(generate_token)
     }
 
     fn unregister_event_source(&mut self, token: Token) -> Result<(), CommonError> {
-        if let Some((event_source, _)) = self.sources.remove(&token) {
+        if let Some((event_source, _)) = self
+            .sources
+            .lock()
+            .map_err(|_| CommonError::Lock)?
+            .remove(&token)
+        {
             let raw_fd = &event_source.as_raw_fd();
             let mut source_fd = SourceFd(raw_fd);
             self.poll
@@ -217,7 +245,12 @@ impl<T: AsRawFd + 'static> EventLoopTrait<T> for LinuxEventLoop<T> {
     }
 
     fn unregister_timed_event_source(&self, token: Token) -> Result<(), CommonError> {
-        if let Some((timer_fd, _event_token, _)) = self.timed_sources.get(&token) {
+        if let Some((timer_fd, _event_token, _)) = self
+            .timed_sources
+            .lock()
+            .map_err(|_| CommonError::Lock)?
+            .get(&token)
+        {
             // Unregister timer_fd
             let mut timer_source = SourceFd(timer_fd);
             self.poll
