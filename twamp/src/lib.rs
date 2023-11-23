@@ -1,14 +1,14 @@
 use std::net::SocketAddr;
 
-use crate::twamp_control::Configuration as ControlConfiguration;
 use crate::twamp_light_reflector::reflector::Reflector;
 use crate::twamp_light_reflector::Configuration as ReflectorConfiguration;
-use crate::twamp_light_sender::twamp_light::TwampLight;
+
 use crate::twamp_light_sender::Configuration as LightConfiguration;
 use network_commons::{error::CommonError, Strategy};
 use serde::{Deserialize, Serialize};
-use twamp_control::control::Control;
+use twamp_control::{control::Control, ControlConfiguration};
 pub use twamp_light_sender::result::TwampResult;
+use twamp_light_sender::twamp_light::LightSender;
 use validator::Validate;
 
 mod twamp_common;
@@ -48,12 +48,12 @@ impl Twamp {
             "LIGHT_SENDER" => {
                 let configuration = LightConfiguration::new(
                     &hosts,
-                    "LIGHT",
                     &self
                         .configuration
                         .source_ip_address
                         .clone()
-                        .unwrap_or_default(),
+                        .unwrap_or("0.0.0.0:0".to_string())
+                        .parse()?,
                     self.configuration.collection_period.unwrap_or_default(),
                     self.configuration.packet_interval.unwrap_or_default(),
                     self.configuration.padding.unwrap_or_default(),
@@ -62,19 +62,18 @@ impl Twamp {
                 configuration
                     .validate()
                     .map_err(CommonError::ValidationError)?;
-                let twamp_light = TwampLight::new(&configuration);
+                let twamp_light = LightSender::new(&configuration);
                 Ok(Box::new(twamp_light))
             }
             "LIGHT_REFLECTOR" => {
-                let configuration = ReflectorConfiguration {
-                    mode: self.configuration.mode.clone(),
-                    source_ip_address: self
-                        .configuration
+                let configuration = ReflectorConfiguration::new(
+                    self.configuration
                         .clone()
                         .source_ip_address
-                        .unwrap_or_default(),
-                    ref_wait: self.configuration.ref_wait.unwrap_or(900),
-                };
+                        .unwrap_or_default()
+                        .as_str(),
+                    self.configuration.ref_wait.unwrap_or(900),
+                );
                 configuration
                     .validate()
                     .map_err(CommonError::ValidationError)?;
@@ -88,7 +87,8 @@ impl Twamp {
                         .configuration
                         .clone()
                         .source_ip_address
-                        .unwrap_or_default(),
+                        .unwrap_or("0.0.0.0:0".to_string())
+                        .parse()?,
                     ref_wait: self.configuration.last_message_timeout.unwrap_or(900),
                 };
                 configuration

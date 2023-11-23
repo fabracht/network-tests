@@ -162,8 +162,8 @@ where
     let (mut alpha, beta) = estimate_alpha_beta_from_owd(&time_values_vec);
     if alpha > 4.0 {
         alpha = 4.0;
-    } else if alpha < 1.5 {
-        alpha = 1.5;
+    } else if alpha < 1.0 {
+        alpha = 1.0;
     }
     let random_values = generate_random_gamma_values(alpha, beta, n, get_time_based_seed());
     // sort random values

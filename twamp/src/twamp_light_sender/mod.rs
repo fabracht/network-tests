@@ -6,11 +6,11 @@ use validator::Validate;
 pub mod result;
 pub mod twamp_light;
 
-#[derive(Validate, Serialize, Deserialize, Debug, PartialEq, Clone, Default)]
+#[derive(Validate, Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub struct Configuration {
     pub hosts: Vec<SocketAddr>,
     pub mode: String,
-    pub source_ip_address: String,
+    pub source_ip_address: SocketAddr,
     #[validate(range(min = 1, max = 3600))]
     pub duration: u64,
     #[validate(range(min = 1, max = 1000))]
@@ -26,8 +26,7 @@ const NETWORK_PRECISION: i32 = 3;
 impl Configuration {
     pub fn new(
         hosts: &[SocketAddr],
-        mode: &str,
-        source_ip_address: &str,
+        source_ip_address: &SocketAddr,
         duration: u64,
         packet_interval: u64,
         padding: usize,
@@ -35,7 +34,7 @@ impl Configuration {
     ) -> Self {
         Self {
             hosts: hosts.to_owned(),
-            mode: mode.into(),
+            mode: "LIGHT".to_string(),
             source_ip_address: source_ip_address.to_owned(),
             duration,
             packet_interval,

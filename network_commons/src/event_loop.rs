@@ -2,7 +2,7 @@ use crate::error::CommonError;
 use core::time::Duration;
 use std::os::fd::{AsRawFd, RawFd};
 
-pub type CallBack<T> = Box<dyn FnMut(&mut T, Token) -> Result<i32, CommonError>>;
+pub type CallBack<T> = Box<dyn FnMut(&mut T, Token) -> Result<i32, CommonError> + Send + 'static>;
 pub type Source<T> = (T, CallBack<T>);
 pub type TimedSource<T> = (RawFd, Token, CallBack<T>);
 
@@ -60,13 +60,11 @@ pub trait EventLoopTrait<T: AsRawFd> {
     ///
     /// # Errors
     /// Returns `CommonError` if the registration fails.
-    fn register_event_source<F>(
+    fn register_event_source(
         &mut self,
         event_source: T,
-        callback: F,
-    ) -> Result<Token, CommonError>
-    where
-        F: FnMut(&mut T, Token) -> Result<i32, CommonError> + 'static;
+        callback: CallBack<T>,
+    ) -> Result<Token, CommonError>;
     /// Unregisters the specified event source from the event loop.
     ///
     /// The `token` identifies the event source to be unregistered.
@@ -107,14 +105,12 @@ pub trait EventLoopTrait<T: AsRawFd> {
     ///
     /// # Errors
     /// Returns `CommonError` if adding the timer fails.
-    fn add_timer<F>(
+    fn add_timer(
         &mut self,
         time_spec: &Itimerspec,
         token: &Token,
-        callback: F,
-    ) -> Result<Token, CommonError>
-    where
-        F: FnMut(&mut T, Token) -> Result<i32, CommonError> + 'static;
+        callback: CallBack<T>,
+    ) -> Result<Token, CommonError>;
 }
 
 #[cfg(target_os = "linux")]

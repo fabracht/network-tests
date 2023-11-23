@@ -10,3 +10,13 @@ pub struct Configuration {
     pub source_ip_address: String,
     pub ref_wait: u64,
 }
+
+impl Configuration {
+    pub fn new(source_ip_address: &str, ref_wait: u64) -> Self {
+        Self {
+            mode: "LIGHT".to_string(),
+            source_ip_address: source_ip_address.to_owned(),
+            ref_wait,
+        }
+    }
+}

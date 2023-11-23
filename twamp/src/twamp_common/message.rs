@@ -236,14 +236,14 @@ pub enum AcceptFields {
 // Define the TWAMP Control message struct used to negotiate sessions
 #[derive(BeBytes, Debug)]
 pub struct ControlMessage {
-    pub control_command: TwampControlCommandNumber,
+    pub control_command: TwampControlCommand,
     pub mbz: [u8; 15],
     pub hmac: [u8; 16],
 }
 
 #[derive(BeBytes, Debug)]
 pub struct StopNSessions {
-    pub control_command: TwampControlCommandNumber,
+    pub control_command: TwampControlCommand,
     pub accept_field: AcceptFields,
     pub mbz1: [u8; 2],
     pub number_of_sessions: u32,
@@ -262,7 +262,7 @@ pub struct AcceptSessionMessage {
 }
 
 #[derive(BeBytes, Debug, PartialEq, Clone, Default)]
-pub enum TwampControlCommandNumber {
+pub enum TwampControlCommand {
     #[default]
     Forbidden = 1,
     StartSessions = 2,
@@ -277,30 +277,30 @@ pub enum TwampControlCommandNumber {
 // Define the Request-Tw-Session message struct
 #[derive(BeBytes, Debug)]
 pub struct RequestTwSession {
-    pub request_type: TwampControlCommandNumber, // Request-Type
+    pub request_type: TwampControlCommand, // Request-Type
     #[U8(size(4), pos(0))]
-    pub mbz1: u8,      // Must be zero (MBZ) quartet
+    pub mbz1: u8, // Must be zero (MBZ) quartet
     #[U8(size(4), pos(4))]
-    pub ipvn: u8,      // IP version number (4 or 6)
-    pub conf_sender: u8,                         // Conf-Sender
-    pub conf_receiver: u8,                       // Conf-Receiver
-    pub num_schedule_slots: u32,                 // Schedule-Slots
-    pub num_packets: u32,                        // Packets
-    pub sender_port: u16,                        // Sender-Port
-    pub receiver_port: u16,                      // Receiver-Port
-    pub sender_address: [u8; 16],                // Sender-Address
-    pub receiver_address: [u8; 16],              // Receiver-Address
-    pub sid: [u8; 16],                           // SID
-    pub padding_length: [u8; 4],                 // Padding
-    pub start_time: NtpTimestamp,                // NtpTimestamp
-    pub timeout: u32,                            // Timeout
-    pub type_p: u8,                              // Type-P
-    pub mbz2: [u8; 8],                           // Must be zero (MBZ) octets
-    pub hmac: [u8; 16],                          // HMAC
+    pub ipvn: u8, // IP version number (4 or 6)
+    pub conf_sender: u8,                   // Conf-Sender
+    pub conf_receiver: u8,                 // Conf-Receiver
+    pub num_schedule_slots: u32,           // Schedule-Slots
+    pub num_packets: u32,                  // Packets
+    pub sender_port: u16,                  // Sender-Port
+    pub receiver_port: u16,                // Receiver-Port
+    pub sender_address: [u8; 16],          // Sender-Address
+    pub receiver_address: [u8; 16],        // Receiver-Address
+    pub sid: [u8; 16],                     // SID
+    pub padding_length: [u8; 4],           // Padding
+    pub start_time: NtpTimestamp,          // NtpTimestamp
+    pub timeout: u32,                      // Timeout
+    pub type_p: u8,                        // Type-P
+    pub mbz2: [u8; 8],                     // Must be zero (MBZ) octets
+    pub hmac: [u8; 16],                    // HMAC
 }
 
 pub struct RequestTwSessionBuilder {
-    request_type: Option<TwampControlCommandNumber>,
+    request_type: Option<TwampControlCommand>,
     ipvn: Option<u8>,
     conf_sender: Option<u8>,
     conf_receiver: Option<u8>,
@@ -340,7 +340,7 @@ impl RequestTwSessionBuilder {
         }
     }
 
-    pub fn request_type(mut self, request_type: TwampControlCommandNumber) -> Self {
+    pub fn request_type(mut self, request_type: TwampControlCommand) -> Self {
         self.request_type = Some(request_type);
         self
     }

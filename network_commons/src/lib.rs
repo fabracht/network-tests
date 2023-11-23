@@ -15,7 +15,6 @@ use error::CommonError;
 
 pub mod error;
 
-#[cfg(target_os = "linux")]
 pub mod epoll_loop;
 pub mod event_loop;
 pub mod socket;

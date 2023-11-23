@@ -1,44 +1,47 @@
 use network_commons::{error::CommonError, stats::offset_estimator::estimate, time::DateTime};
+
 use std::{
-    net::SocketAddr,
-    rc::Rc,
+    net::{IpAddr, Ipv4Addr, SocketAddr},
     sync::{
         atomic::{AtomicU32, Ordering},
-        RwLock,
+        Arc, RwLock,
     },
 };
 
 use super::message::{Message, PacketResults, SessionPackets, TimestampsResult};
 
-/// A `Session` represents a communication session with a `Host`.
+/// A `Session` represents a communication with a remote sender.
 /// It maintains a sequence number and a collection of `PacketResults`.
 /// A session also provides several methods for adding new packets to the session,
 /// getting the latest result, and analyzing packet loss.
 #[derive(Debug)]
 pub struct Session {
-    pub socket_address: SocketAddr,
+    pub rx_socket_address: SocketAddr,
+    pub tx_socket_address: SocketAddr,
     pub seq_number: AtomicU32,
-    pub results: Rc<RwLock<Vec<PacketResults>>>,
+    pub results: Arc<RwLock<Vec<PacketResults>>>,
     pub last_updated: usize,
 }
 
 impl Session {
     /// Creates a new `Session` from a `Host`.
-    pub fn new(socket_address: &SocketAddr) -> Result<Self, CommonError> {
-        Ok(Self {
-            socket_address: *socket_address,
+    pub fn new(rx: SocketAddr, tx: SocketAddr) -> Self {
+        Self {
+            rx_socket_address: rx,
+            tx_socket_address: tx,
             seq_number: AtomicU32::new(0),
-            results: Rc::new(RwLock::new(Vec::new())),
+            results: Arc::new(RwLock::new(Vec::new())),
             last_updated: 0,
-        })
+        }
     }
 
     /// Creates a new `Session` from a `SocketAddr`.
     pub fn from_socket_address(host: &SocketAddr) -> Self {
         Self {
-            socket_address: *host,
+            rx_socket_address: SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
+            tx_socket_address: *host,
             seq_number: AtomicU32::new(0),
-            results: Rc::new(RwLock::new(Vec::new())),
+            results: Arc::new(RwLock::new(Vec::new())),
             last_updated: 0,
         }
     }
@@ -47,16 +50,17 @@ impl Session {
     /// The method finds the matching sent packet by sequence number and updates its fields.
     pub fn add_to_received(&self, message: impl Message, t4: DateTime) -> Result<(), CommonError> {
         let mut write_lock = self.results.write()?;
-        write_lock.iter_mut().for_each(|result| {
-            let packet_results = message.packet_results();
-
-            if result.sender_seq == packet_results.sender_seq {
-                result.reflector_seq = packet_results.reflector_seq;
-                result.t2 = packet_results.t2;
-                result.t3 = packet_results.t3;
-                result.t4 = Some(t4);
-            }
-        });
+        let packet_results = message.packet_results();
+        write_lock
+            .iter_mut()
+            .find(|result| result.sender_seq == packet_results.sender_seq)
+            .map(|results| {
+                results.reflector_seq = packet_results.reflector_seq;
+                results.t2 = packet_results.t2;
+                results.t3 = packet_results.t3;
+                results.t4 = Some(t4);
+                log::debug!("Received packet results {:#?}", results);
+            });
         Ok(())
     }
 
@@ -77,7 +81,7 @@ impl Session {
         let last_result = results.last()?;
         Some(TimestampsResult {
             session: SessionPackets {
-                address: self.socket_address,
+                address: self.rx_socket_address,
                 packets: Some(vec![PacketResults {
                     sender_seq: last_result.sender_seq,
                     reflector_seq: last_result.reflector_seq,

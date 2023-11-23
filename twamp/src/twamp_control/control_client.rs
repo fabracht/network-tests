@@ -6,7 +6,6 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::RwLock;
 
-use crate::twamp_common::data_model::ServerCtrlConnectionState;
 use crate::twamp_common::data_model::TestSessionReflector;
 use crate::twamp_common::message::AcceptFields;
 use crate::twamp_common::message::AcceptSessionMessage;
@@ -15,14 +14,14 @@ use crate::twamp_common::message::Modes;
 use crate::twamp_common::message::RequestTwSession;
 use crate::twamp_common::message::ServerGreeting;
 use crate::twamp_common::message::TwampControlCommand;
-// use crate::twamp_light_reflector::Configuration;
 
 use bebytes::BeBytes;
-
+use network_commons::epoll_loop::EventLoopMessages;
 use network_commons::error::CommonError;
 use network_commons::{socket::Socket, tcp_socket::TimestampedTcpSocket};
 
 use super::WorkerSender;
+use crate::twamp_common::data_model::ServerCtrlConnectionState;
 
 // Define a struct to represent the TWAMP control session
 pub struct ControlSession {
@@ -163,7 +162,7 @@ impl ControlSession {
                                             ),
                                             response_port,
                                         ));
-                                        let ref_wait = response.timeout as u64;
+                                        // let ref_wait = response.timeout as u64;
                                         // let session = self
                                         //     .twamp_sessions
                                         //     .iter()

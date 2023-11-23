@@ -2,7 +2,7 @@
 /// `CommonError` is an enum containing error variants which are likely to be used across different parts of the codebase.
 use std::error::Error;
 use std::fmt::{Display, Formatter, Result as FmtResult};
-use std::sync::{PoisonError, RwLockWriteGuard};
+use std::sync::{PoisonError, RwLockWriteGuard, TryLockError};
 
 /// A handy Result type specific to the common error set defined by `CommonError`.
 pub type Result<T> = std::result::Result<T, CommonError>;
@@ -101,6 +101,12 @@ impl From<std::convert::Infallible> for CommonError {
 
 impl<T> From<PoisonError<RwLockWriteGuard<'_, Vec<T>>>> for CommonError {
     fn from(_: PoisonError<RwLockWriteGuard<'_, Vec<T>>>) -> Self {
+        CommonError::Lock
+    }
+}
+
+impl<T> From<TryLockError<T>> for CommonError {
+    fn from(_: TryLockError<T>) -> Self {
         CommonError::Lock
     }
 }

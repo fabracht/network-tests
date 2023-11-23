@@ -5,15 +5,22 @@ use std::{
         fd::{AsRawFd, FromRawFd, RawFd},
         unix::net::UnixDatagram,
     },
-    sync::{atomic::AtomicUsize, mpsc, Arc, Mutex},
+    sync::{atomic::AtomicUsize, mpsc, Arc, RwLock},
     time::Duration,
 };
 
 use crate::{
     error::CommonError,
-    event_loop::{itimerspec_to_libc, EventLoopTrait, Itimerspec, Source, TimedSource, Token},
+    event_loop::{
+        itimerspec_to_libc, CallBack, EventLoopTrait, Itimerspec, Source, TimedSource, Token,
+    },
     libc_call,
 };
+
+pub enum EventLoopMessages<T: Send> {
+    Register(T),
+    Unregister(Token),
+}
 
 /// Event loop specifically tailored for Linux environments.
 ///
@@ -21,29 +28,30 @@ use crate::{
 ///
 /// # Type Parameters
 ///
-/// * `T`: A type that implements both `AsRawFd` and `Socket`. This is the type of socket that will be managed by the event loop.
-pub struct LinuxEventLoop<T: AsRawFd> {
+/// * `T`: A type that implements `AsRawFd`. This is the type of socket that will be managed by the event loop.
+pub struct LinuxEventLoop<T: AsRawFd + Send> {
     poll: Poll,
     events: Events,
     /// A mapping from tokens to registered I/O sources.
-    sources: Arc<Mutex<HashMap<Token, Source<T>>>>,
+    sources: Arc<RwLock<HashMap<Token, Source<T>>>>,
     /// A mapping from tokens to registered timed sources.
-    timed_sources: Arc<Mutex<HashMap<Token, TimedSource<T>>>>,
+    timed_sources: Arc<RwLock<HashMap<Token, TimedSource<T>>>>,
     next_token: AtomicUsize,
-    registration_sender: mpsc::Sender<Source<T>>,
-    registration_receiver: mpsc::Receiver<Source<T>>,
+    registration_sender: mpsc::Sender<EventLoopMessages<Source<T>>>,
+    registration_receiver: mpsc::Receiver<EventLoopMessages<Source<T>>>,
     /// Optional timer specification for an overtime period.
-    /// The overtime period removes all timed events
+    /// The overtime period removes all timed events, but keeps
+    /// listening for readable events
     overtime: Option<Itimerspec>,
 }
 
-impl<T: AsRawFd> LinuxEventLoop<T> {
+impl<T: AsRawFd + Send> LinuxEventLoop<T> {
     /// Returns a sender for the channel used to communicate with the event loop.
     ///
     /// # Returns
     ///
     /// A clone of the `mpsc::Sender` used by the event loop.
-    pub fn get_communication_channel(&self) -> mpsc::Sender<Source<T>> {
+    pub fn get_communication_channel(&self) -> mpsc::Sender<EventLoopMessages<Source<T>>> {
         self.registration_sender.clone()
     }
 
@@ -57,7 +65,7 @@ impl<T: AsRawFd> LinuxEventLoop<T> {
     }
 }
 
-impl<T: AsRawFd + 'static> EventLoopTrait<T> for LinuxEventLoop<T> {
+impl<T: AsRawFd + Send + 'static> EventLoopTrait<T> for LinuxEventLoop<T> {
     fn new(event_capacity: usize) -> Result<Self, CommonError> {
         // Create the poll
         let poll = Poll::new()?;
@@ -67,8 +75,8 @@ impl<T: AsRawFd + 'static> EventLoopTrait<T> for LinuxEventLoop<T> {
         Ok(Self {
             poll,
             events,
-            sources: Arc::new(Mutex::new(HashMap::new())),
-            timed_sources: Arc::new(Mutex::new(HashMap::new())),
+            sources: Arc::new(RwLock::new(HashMap::new())),
+            timed_sources: Arc::new(RwLock::new(HashMap::new())),
             next_token: AtomicUsize::new(0),
             registration_sender,
             registration_receiver,
@@ -87,70 +95,94 @@ impl<T: AsRawFd + 'static> EventLoopTrait<T> for LinuxEventLoop<T> {
 
     fn run(&mut self) -> Result<(), CommonError> {
         'outer: loop {
-            while let Ok((event_source, callback)) = self.registration_receiver.try_recv() {
-                let _inner_token = self.register_event_source(event_source, callback)?;
+            while let Ok(message) = self.registration_receiver.try_recv() {
+                match message {
+                    EventLoopMessages::Register((event_source, callback)) => {
+                        let _inner_token = self.register_event_source(event_source, callback)?;
+                    }
+                    EventLoopMessages::Unregister(token) => {
+                        self.unregister_event_source(token)?;
+                    }
+                }
             }
-            self.poll
-                .poll(&mut self.events, Some(std::time::Duration::from_millis(10)))?;
+
+            self.poll.poll(
+                &mut self.events,
+                Some(std::time::Duration::from_millis(100)),
+            )?;
             for event in self.events.iter() {
                 if event.is_readable() {
                     let token = event.token();
                     log::trace!("Event token {:?}", token);
                     let generate_token = Token(token.0);
-                    let sources = &mut self.sources.lock().map_err(|_| CommonError::Lock)?;
-                    let sources = sources.get_mut(&generate_token);
-                    let timed_sources =
-                        &mut self.timed_sources.lock().map_err(|_| CommonError::Lock)?;
-                    let timed_sources = timed_sources.get_mut(&generate_token);
-                    if let Some((source, callback)) = sources {
-                        callback(source, generate_token)?;
-                    } else if let Some((timer_source, inner_token, callback)) = timed_sources {
-                        if let Some((source, _)) = self
-                            .sources
-                            .lock()
-                            .map_err(|_| CommonError::Lock)?
-                            .get_mut(inner_token)
-                        {
-                            callback(source, *inner_token)?;
-                            reset_timer(timer_source)?;
-                        }
-                    } else {
-                        // else only triggers on duration and overtime
-                        if self.overtime.is_none() {
-                            log::debug!("No overtime");
-                            break 'outer;
-                        }
-                        self.timed_sources
-                            .lock()
-                            .map_err(|_| CommonError::Lock)?
-                            .iter()
-                            .for_each(|(token, _)| {
-                                let _ = self.unregister_timed_event_source(Token(token.0));
-                            });
-                        log::debug!("Entering Overtime {:?}", self.overtime);
-                        let _ = self.add_duration(&self.overtime.unwrap_or(Itimerspec {
-                            it_interval: Duration::from_millis(500),
-                            it_value: Duration::ZERO,
-                        }))?;
+                    if let Ok(mut sources) = self.sources.try_write() {
+                        if let Ok(mut timed_sources) = self.timed_sources.try_write() {
+                            if let Some((source, callback)) = sources.get_mut(&generate_token) {
+                                match callback(source, generate_token) {
+                                    Ok(_) => (),
+                                    Err(e) => {
+                                        log::error!(
+                                            "An error {:?} has occurred. Closing source",
+                                            e
+                                        );
+                                        let _ = self.unregister_timed_event_source(generate_token);
+                                    }
+                                }
+                            } else if let Some((timer_source, inner_token, callback)) =
+                                timed_sources.get_mut(&generate_token)
+                            {
+                                if let Some((source, _)) = sources.get_mut(inner_token) {
+                                    callback(source, *inner_token)?;
+                                    reset_timer(timer_source)?;
+                                }
+                            } else {
+                                // else only triggers on duration and overtime
+                                if self.overtime.is_none() {
+                                    log::debug!("No overtime");
+                                    break 'outer;
+                                }
+                                timed_sources.iter().for_each(|(token, _)| {
+                                    let _ = self.unregister_timed_event_source(Token(token.0));
+                                });
+                                log::debug!("Entering Overtime {:?}", self.overtime);
+                                let _ =
+                                    self.add_duration(&self.overtime.unwrap_or(Itimerspec {
+                                        it_interval: Duration::from_millis(500),
+                                        it_value: Duration::ZERO,
+                                    }))?;
 
-                        self.overtime = None;
+                                self.overtime = None;
+                            }
+                        }
                     }
                 }
             }
+            // Check if there are any sources with closed file descriptors and deregister them
+            let sources_clone = self.sources.clone();
+            let sources_reference = sources_clone.try_read().unwrap();
+            let dead_tokens = sources_reference.iter().filter_map(|(token, (source, _))| {
+                let fd = source.as_raw_fd();
+
+                if !is_fd_open(&fd) {
+                    return Some(*token);
+                }
+                None
+            });
+            dead_tokens.for_each(|token| {
+                let _ = self.unregister_event_source(token);
+                let _ = self.unregister_timed_event_source(token);
+            });
         }
 
         Ok(())
     }
 
-    fn add_timer<F>(
+    fn add_timer(
         &mut self,
         time_spec: &Itimerspec,
         token: &Token,
-        callback: F,
-    ) -> Result<Token, CommonError>
-    where
-        F: FnMut(&mut T, Token) -> Result<i32, CommonError> + 'static,
-    {
+        callback: CallBack<T>,
+    ) -> Result<Token, CommonError> {
         let timer_fd = unsafe {
             let fd = libc::timerfd_create(libc::CLOCK_REALTIME, libc::TFD_NONBLOCK);
             let itimer_spec = itimerspec_to_libc(time_spec);
@@ -164,15 +196,9 @@ impl<T: AsRawFd + 'static> EventLoopTrait<T> for LinuxEventLoop<T> {
         self.poll
             .registry()
             .register(&mut timer_source, mio_token, Interest::READABLE)?;
-        if let Some((_source, _)) = self
-            .sources
-            .lock()
-            .map_err(|_| CommonError::Lock)?
-            .get_mut(token)
-        {
+        if let Some((_source, _)) = self.sources.try_write().unwrap().get_mut(token) {
             self.timed_sources
-                .lock()
-                .map_err(|_| CommonError::Lock)?
+                .try_write()?
                 .insert(new_token, (timer_fd, *token, Box::new(callback)));
         }
 
@@ -197,60 +223,47 @@ impl<T: AsRawFd + 'static> EventLoopTrait<T> for LinuxEventLoop<T> {
         Ok(new_token)
     }
 
-    fn register_event_source<F>(
+    fn register_event_source(
         &mut self,
         event_source: T,
-        callback: F,
-    ) -> Result<Token, CommonError>
-    where
-        F: FnMut(&mut T, Token) -> Result<i32, CommonError> + 'static,
-    {
+        callback: CallBack<T>,
+    ) -> Result<Token, CommonError> {
         let binding = &event_source.as_raw_fd();
         let mut source = SourceFd(binding);
         let generate_token = self.generate_token();
         let token = mio::Token(generate_token.0);
-        self.poll.registry().register(
-            &mut source,
-            token,
-            Interest::READABLE | Interest::WRITABLE,
-        )?;
+        self.poll
+            .registry()
+            .register(&mut source, token, Interest::READABLE)?;
         self.sources
-            .lock()
-            .map_err(|_| CommonError::Lock)?
+            .try_write()
+            .unwrap()
             .insert(generate_token, (event_source, Box::new(callback)));
         Ok(generate_token)
     }
 
     fn unregister_event_source(&mut self, token: Token) -> Result<(), CommonError> {
-        if let Some((event_source, _)) = self
-            .sources
-            .lock()
-            .map_err(|_| CommonError::Lock)?
-            .remove(&token)
-        {
-            let raw_fd = &event_source.as_raw_fd();
-            let mut source_fd = SourceFd(raw_fd);
-            self.poll
-                .registry()
-                .deregister(&mut source_fd)
-                .map_err(|e| {
-                    CommonError::from(format!("Failed to deregister event source: {}", e))
-                })?;
-        } else {
-            return Err(CommonError::from(
-                "Failed to unregister event source: token not found".to_string(),
-            ));
+        if let Ok(mut sources) = self.sources.try_write() {
+            if let Some((event_source, _)) = sources.remove(&token) {
+                let raw_fd = &event_source.as_raw_fd();
+                let mut source_fd = SourceFd(raw_fd);
+                self.poll
+                    .registry()
+                    .deregister(&mut source_fd)
+                    .map_err(|e| {
+                        CommonError::from(format!("Failed to deregister event source: {}", e))
+                    })?;
+            } else {
+                return Err(CommonError::from(
+                    "Failed to unregister event source: token not found".to_string(),
+                ));
+            }
         }
         Ok(())
     }
 
     fn unregister_timed_event_source(&self, token: Token) -> Result<(), CommonError> {
-        if let Some((timer_fd, _event_token, _)) = self
-            .timed_sources
-            .lock()
-            .map_err(|_| CommonError::Lock)?
-            .get(&token)
-        {
+        if let Some((timer_fd, _event_token, _)) = self.timed_sources.try_read()?.get(&token) {
             // Unregister timer_fd
             let mut timer_source = SourceFd(timer_fd);
             self.poll
@@ -326,4 +339,11 @@ pub fn create_non_blocking_unix_datagram() -> Result<UnixDatagram, CommonError> 
     }
 
     Ok(unsafe { UnixDatagram::from_raw_fd(socket_fd) })
+}
+
+/// Checks if file descriptor is open or closed returning a boolean value
+fn is_fd_open<T: AsRawFd>(file: &T) -> bool {
+    let fd = file.as_raw_fd();
+    let res = unsafe { libc::fcntl(fd, libc::F_GETFD) };
+    unsafe { !(res == -1 && *libc::__errno_location() == libc::EBADF) }
 }
