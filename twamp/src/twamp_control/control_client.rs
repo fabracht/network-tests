@@ -1,255 +1,139 @@
-#![allow(dead_code)]
-use std::net::Ipv4Addr;
-use std::net::SocketAddr;
-use std::net::SocketAddrV4;
-use std::sync::Arc;
-use std::sync::Mutex;
-use std::sync::RwLock;
+use std::{
+    sync::{Arc, RwLock},
+    time::Duration,
+};
 
-use crate::twamp_common::data_model::TestSessionReflector;
-use crate::twamp_common::message::AcceptFields;
-use crate::twamp_common::message::AcceptSessionMessage;
-use crate::twamp_common::message::ClientSetupResponse;
-use crate::twamp_common::message::Modes;
-use crate::twamp_common::message::RequestTwSession;
-use crate::twamp_common::message::ServerGreeting;
-use crate::twamp_common::message::TwampControlCommand;
+use network_commons::{
+    epoll_loop::LinuxEventLoop as EventLoop,
+    error::CommonError,
+    event_loop::{EventLoopTrait, Itimerspec},
+    socket::Socket,
+    tcp_socket::TimestampedTcpSocket,
+    udp_socket::TimestampedUdpSocket,
+    Strategy,
+};
 
-use bebytes::BeBytes;
-use network_commons::epoll_loop::EventLoopMessages;
-use network_commons::error::CommonError;
-use network_commons::{socket::Socket, tcp_socket::TimestampedTcpSocket};
+use crate::{
+    twamp_common::{
+        data_model::{Mode, Modes},
+        session::Session,
+    },
+    twamp_control::control_client_session::ClientControlSession,
+    twamp_light_sender::{
+        twamp_light::calculate_session_results, Configuration as TestSessionsConfiguration,
+    },
+    TwampResult,
+};
 
-use super::WorkerSender;
-use crate::twamp_common::data_model::ServerCtrlConnectionState;
+use super::ClientConfiguration;
 
-// Define a struct to represent the TWAMP control session
-pub struct ControlSession {
-    pub id: i32,
-    supported_modes: Modes,
-    state: ServerCtrlConnectionState,
-    twamp_sessions: Arc<Vec<TestSessionReflector>>,
-    retry_count: u32, // Number of times to retry failed steps
-    error_count: u32, // Number of times to tolerate errors before terminating the session
-    auth_timeout: std::time::Duration,
-    negotiation_timeout: std::time::Duration,
-    start_timeout: std::time::Duration,
-    monitor_timeout: std::time::Duration,
-    rx_buffer: [u8; 1 << 16],
-    worker_event_sender: Arc<Mutex<WorkerSender>>,
+/// The control client.
+#[derive(Debug)]
+pub struct ControlClient {
+    /// The control connections of the control client.
+    control_configuration: ClientConfiguration,
+    test_sessions_configuration: TestSessionsConfiguration,
 }
 
-impl ControlSession {
-    // Method to create a new TWAMP control session with the initial state and TCP connection
+impl ControlClient {
     pub fn new(
-        token: i32,
-        mode: Modes,
-        retry_count: u32,
-        error_count: u32,
-        worker_event_sender: Arc<Mutex<WorkerSender>>,
-    ) -> ControlSession {
-        ControlSession {
-            id: token,
-            supported_modes: mode,
-            state: ServerCtrlConnectionState::Greeting,
-            twamp_sessions: Arc::new(Vec::new()),
-            retry_count,
-            error_count,
-            auth_timeout: std::time::Duration::from_secs(30),
-            negotiation_timeout: std::time::Duration::from_secs(30),
-            start_timeout: std::time::Duration::from_secs(10),
-            monitor_timeout: std::time::Duration::from_secs(10),
-            rx_buffer: [0; 1 << 16],
-            worker_event_sender,
+        configuration: &ClientConfiguration,
+        test_sessions_configuration: &TestSessionsConfiguration,
+    ) -> Self {
+        log::info!("Configuration: {:?}", configuration);
+
+        log::info!("Created control client, {:?}", configuration);
+        Self {
+            control_configuration: configuration.to_owned(),
+            test_sessions_configuration: test_sessions_configuration.to_owned(),
         }
     }
+}
 
-    // Method to transition to the next state of the state machine
-    pub fn transition(&mut self, socket: &mut TimestampedTcpSocket) -> Result<(), CommonError> {
-        match self.state {
-            ServerCtrlConnectionState::Greeting => {
-                let server_greeting = ServerGreeting::new(
-                    [0; 12],
-                    self.supported_modes,
-                    [0; 16],
-                    [0; 16],
-                    1,
-                    [0; 12],
-                );
+impl Strategy<TwampResult, CommonError> for ControlClient {
+    fn execute(&mut self) -> Result<TwampResult, CommonError> {
+        log::info!("Executing control client");
+        let (tx, rx) = std::sync::mpsc::channel();
+        let overtime = Duration::from_secs(self.test_sessions_configuration.last_message_timeout);
+        let duration = Duration::from_secs(self.test_sessions_configuration.duration);
+        let sessions_handle =
+            std::thread::spawn(move || -> std::result::Result<(), CommonError> {
+                let mut event_loop: EventLoop<TimestampedUdpSocket> = EventLoop::new(1024)?;
+                event_loop.set_overtime(Itimerspec {
+                    it_interval: Duration::ZERO,
+                    it_value: overtime,
+                });
 
-                log::info!("Sending Greeting message");
-                let result = socket.send(server_greeting);
-                match result {
-                    // If successful, transition to the authentication state
-                    Ok((_result, _)) => {
-                        log::info!("Transition to Negotiation");
-                        self.state = ServerCtrlConnectionState::Negotiation
-                    }
-                    // If failed, transition to the error state or retry state
-                    Err(_e) => {
-                        return Err(CommonError::Generic(
-                            "Error sending Greeting response".to_string(),
-                        ));
-                    }
-                }
-            }
-            ServerCtrlConnectionState::Negotiation => {
-                let result = socket.receive(&mut self.rx_buffer);
-                if let Ok(result) = result {
-                    if result.0 != 0 {
-                        log::info!("Received ClientSetupResponse");
-                        match ClientSetupResponse::try_from_be_bytes(&self.rx_buffer) {
-                            Ok((response, _bytes_written)) => {
-                                // verify if the mode requested is supported
-                                if response.mode & self.supported_modes == response.mode {
-                                    self.state = ServerCtrlConnectionState::Authentication;
-                                    self.transition(socket)?;
-                                } else {
-                                    return Err(CommonError::Generic(
-                                        "Mode not supported".to_string(),
-                                    ));
-                                }
-                            }
-                            Err(_) => {
-                                log::error!("Can't parse Greeting bytes");
-                                return Err(CommonError::Generic(
-                                    "Error parsing Greeting response".to_string(),
-                                ));
-                            }
-                        };
-                    } else {
-                        log::error!("Can't receive 0 bytes");
-                        return Err(CommonError::Generic("Close signal received".to_string()));
-                    }
-                }
-            }
-            ServerCtrlConnectionState::Authentication => {
-                log::info!("Authenticating");
+                let event_sender = event_loop.get_communication_channel();
+                tx.send(event_sender)?;
+                event_loop.run()?;
+                Ok(())
+            });
+        let sessions_configuration = self.test_sessions_configuration.to_owned();
+        let control_host = self.control_configuration.control_host;
+        let socket_addr = self.control_configuration.source_address;
 
-                self.state = ServerCtrlConnectionState::Start;
-                self.transition(socket)?;
-            }
-            ServerCtrlConnectionState::Start => {
-                let result = socket.receive(&mut self.rx_buffer);
-                log::info!("Received message in Start");
-                if let Ok(result) = result {
-                    if result.0 != 0 {
-                        match RequestTwSession::try_from_be_bytes(&self.rx_buffer) {
-                            Ok((response, _bytes_written)) => {
-                                match response.request_type {
-                                    TwampControlCommand::Forbidden => {
-                                        println!("Unimplemented!");
-                                    }
-                                    TwampControlCommand::StartSessions => {
-                                        // Start sessions
-                                        self.state = ServerCtrlConnectionState::Monitor;
-                                        self.transition(socket)?;
-                                    }
-                                    TwampControlCommand::StopSessions => {
-                                        println!("Unimplemented!");
-                                    }
-                                    TwampControlCommand::RequestTwSession => {
-                                        log::info!("Received RequestTwSession: {:?}", response);
-                                        // Check if port is already in use, if not, propose the next available
-                                        let response_ip = response.receiver_address;
-                                        let response_port = response.receiver_port;
-                                        let source_ip = SocketAddr::V4(SocketAddrV4::new(
-                                            Ipv4Addr::new(
-                                                response_ip[0],
-                                                response_ip[1],
-                                                response_ip[2],
-                                                response_ip[3],
-                                            ),
-                                            response_port,
-                                        ));
-                                        // let ref_wait = response.timeout as u64;
-                                        // let session = self
-                                        //     .twamp_sessions
-                                        //     .iter()
-                                        //     .find(|session| {
-                                        //         session.configuration.source_ip_address.port()
-                                        //             == response.receiver_port
-                                        //     })
-                                        //     .get_or_insert(&mut TestSessionReflector::new(
-                                        //         "sid".to_string(),
-                                        //         Configuration::new(&source_ip, ref_wait),
-                                        //     ));
-                                        // let udp_socket =
-                                        //     TestSessionReflector::create_socket(&source_ip)?;
-                                        // let sessions = Arc::new(RwLock::new(Vec::new()));
-                                        // let callback = rx_callback(source_ip, sessions)?;
-                                        // let _ = self.worker_event_sender.lock().unwrap().send(
-                                        //     EventLoopMessages::Register((
-                                        //         udp_socket,
-                                        //         Box::new(callback),
-                                        //     )),
-                                        // );
-                                        let accept_message = AcceptSessionMessage::new(
-                                            AcceptFields::Ok,
-                                            0,
-                                            response.receiver_port,
-                                            [0; 16],
-                                            [0; 12],
-                                            [0; 16],
-                                        );
-                                        socket.send(accept_message)?;
-                                    }
-                                    TwampControlCommand::StartNSessions => {
-                                        println!("Unimplemented!");
-                                    }
-                                    TwampControlCommand::StartNAck => {
-                                        println!("Unimplemented!");
-                                    }
-                                    TwampControlCommand::StopNSessions => {
-                                        println!("Unimplemented!");
-                                    }
-                                    TwampControlCommand::StopNAck => {
-                                        println!("Unimplemented!");
-                                    }
-                                }
-                            }
-                            Err(_) => {
-                                log::error!("Can't parse RequestTwSession bytes");
-                                return Err(CommonError::Generic(
-                                    "Error parsing RequestTwSession response".to_string(),
-                                ));
-                            }
-                        };
-                    } else {
-                        log::warn!("Can't receive 0 bytes");
-                        return Err(CommonError::Generic("Close signal received".to_string()));
-                    }
-                }
-            }
-            ServerCtrlConnectionState::Monitor => {
-                log::info!("Monitoring");
-                // Monitor each test session
+        // let _control_handle = std::thread::spawn(move || -> Result<(), CommonError> {
+        // Get event sender from worker thread event loop
+        let worker_event_sender = rx.recv().unwrap();
+        let wes = worker_event_sender;
 
-                // If any test session completes, do:
-                // If it completes successfully,
-                // If any test session fails, transition to the error state or retry state
-                // depending on the retry and error counts
-                // Set a timeout for the TW
-            }
-            ServerCtrlConnectionState::End => {
-                // Send the TWAMP-Stop packet to end each test session
-                // If successful, transition to the error state
-                // If failed, transition to the error state or retry state
-                // depending on the retry and error counts
-            }
-            ServerCtrlConnectionState::Retry => {
-                // Retry the failed step
-                // If successful, transition back to the previous state
-                // If failed, transition to the error state or retry state
-                // depending on the retry and error counts
-            }
-            ServerCtrlConnectionState::Error => {
-                // Handle the error
-                // If recoverable, transition back to the previous state
-                // If not recoverable, terminate the control connection and stop all test sessions
-                log::error!("An error in a transition has occurred");
-            }
-        }
-        Ok(())
+        // ///////////////////////////////////////////////////////////////////////////////
+        // // Temporary setup using just 1 source socket and 1 control server connection
+        // let ctrl_connection = self.configuration;
+        // let source_address = ctrl_connection.client_socket_addr;
+        // let dest_address = ctrl_connection.server_socket_address;
+        /////////////////////////////////////////////////
+        let mut socket = TimestampedTcpSocket::bind(&socket_addr)?;
+
+        log::warn!("Connecting to {:?}", control_host);
+        socket.connect(control_host)?;
+
+        let mut control_event_loop = EventLoop::new(1024)?;
+        let sessions = sessions_configuration
+            .hosts
+            .iter()
+            .map(|host| Session::new(sessions_configuration.source_ip_address, *host))
+            .collect::<Vec<Session>>();
+        let rc_sessions = Arc::new(RwLock::new(sessions));
+
+        let mut client_control_session = ClientControlSession::new(
+            0,
+            Modes::new(Mode::Unauthenticated.into()),
+            rc_sessions.clone(),
+            0,
+            sessions_configuration,
+            wes,
+        );
+        log::info!("Created tcp socket");
+
+        #[cfg(target_os = "linux")]
+        socket.set_fcntl_options()?;
+        log::info!("Set socket options");
+        socket.set_timestamping_options()?;
+
+        let _event_sender = control_event_loop.get_communication_channel();
+        let _register_result = control_event_loop.register_event_source(
+            socket,
+            Box::new(move |listener: &mut TimestampedTcpSocket, _token| {
+                client_control_session.transition(listener)?;
+                Ok(0)
+            }),
+        )?;
+        control_event_loop.set_overtime(Itimerspec {
+            it_interval: Duration::ZERO,
+            it_value: overtime,
+        });
+        control_event_loop.add_duration(&Itimerspec {
+            it_interval: Duration::ZERO,
+            it_value: duration + overtime,
+        })?;
+        control_event_loop.run()?;
+        let _ = sessions_handle.join();
+        let session_results = calculate_session_results(rc_sessions)?;
+        Ok(TwampResult {
+            session_results,
+            error: None,
+        })
     }
 }

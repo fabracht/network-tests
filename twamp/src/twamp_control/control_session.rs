@@ -2,34 +2,46 @@
 use std::net::Ipv4Addr;
 use std::net::SocketAddr;
 use std::net::SocketAddrV4;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::RwLock;
 
+use crate::twamp_common::data_model::AcceptFields;
+use crate::twamp_common::data_model::ErrorEstimate;
+use crate::twamp_common::data_model::Modes;
 use crate::twamp_common::data_model::ServerCtrlConnectionState;
-use crate::twamp_common::data_model::TestSessionReflector;
-use crate::twamp_common::message::AcceptFields;
+use crate::twamp_common::MIN_UNAUTH_PADDING;
+// use crate::twamp_common::data_model::TestSessionReflector;
+
+use crate::twamp_common::data_model::TwampControlCommand;
 use crate::twamp_common::message::AcceptSessionMessage;
 use crate::twamp_common::message::ClientSetupResponse;
-use crate::twamp_common::message::Modes;
+
+use crate::twamp_common::message::ControlMessage;
+use crate::twamp_common::message::ReflectedMessage;
 use crate::twamp_common::message::RequestTwSession;
+use crate::twamp_common::message::SenderMessage;
 use crate::twamp_common::message::ServerGreeting;
-use crate::twamp_common::message::TwampControlCommand;
-// use crate::twamp_light_reflector::Configuration;
+use crate::twamp_common::message::ServerStart;
+use crate::twamp_common::session::Session;
 
 use bebytes::BeBytes;
 
+use network_commons::epoll_loop::DuplexChannel;
+use network_commons::epoll_loop::EventLoopMessages;
 use network_commons::error::CommonError;
+use network_commons::time::DateTime;
+use network_commons::time::NtpTimestamp;
+use network_commons::udp_socket::TimestampedUdpSocket;
 use network_commons::{socket::Socket, tcp_socket::TimestampedTcpSocket};
-
-use super::WorkerSender;
 
 // Define a struct to represent the TWAMP control session
 pub struct ControlSession {
     pub id: i32,
     supported_modes: Modes,
     state: ServerCtrlConnectionState,
-    twamp_sessions: Arc<Vec<TestSessionReflector>>,
+    twamp_sessions: Arc<RwLock<Vec<Session>>>,
     retry_count: u32, // Number of times to retry failed steps
     error_count: u32, // Number of times to tolerate errors before terminating the session
     auth_timeout: std::time::Duration,
@@ -37,7 +49,8 @@ pub struct ControlSession {
     start_timeout: std::time::Duration,
     monitor_timeout: std::time::Duration,
     rx_buffer: [u8; 1 << 16],
-    worker_event_sender: Arc<Mutex<WorkerSender>>,
+    worker_event_sender: Arc<Mutex<DuplexChannel<TimestampedUdpSocket>>>,
+    start_time: DateTime,
 }
 
 impl ControlSession {
@@ -47,13 +60,15 @@ impl ControlSession {
         mode: Modes,
         retry_count: u32,
         error_count: u32,
-        worker_event_sender: Arc<Mutex<WorkerSender>>,
+        worker_event_sender: Arc<Mutex<DuplexChannel<TimestampedUdpSocket>>>,
     ) -> ControlSession {
+        let start_time = DateTime::utc_now();
+
         ControlSession {
             id: token,
             supported_modes: mode,
             state: ServerCtrlConnectionState::Greeting,
-            twamp_sessions: Arc::new(Vec::new()),
+            twamp_sessions: Arc::new(RwLock::new(Vec::new())),
             retry_count,
             error_count,
             auth_timeout: std::time::Duration::from_secs(30),
@@ -62,6 +77,7 @@ impl ControlSession {
             monitor_timeout: std::time::Duration::from_secs(10),
             rx_buffer: [0; 1 << 16],
             worker_event_sender,
+            start_time,
         }
     }
 
@@ -83,7 +99,7 @@ impl ControlSession {
                 match result {
                     // If successful, transition to the authentication state
                     Ok((_result, _)) => {
-                        log::info!("Transition to Negotiation");
+                        log::info!("Transition to Authentication");
                         self.state = ServerCtrlConnectionState::Negotiation
                     }
                     // If failed, transition to the error state or retry state
@@ -94,6 +110,11 @@ impl ControlSession {
                     }
                 }
             }
+            ServerCtrlConnectionState::Authentication => {
+                log::info!("Authenticating");
+
+                self.state = ServerCtrlConnectionState::Negotiation;
+            }
             ServerCtrlConnectionState::Negotiation => {
                 let result = socket.receive(&mut self.rx_buffer);
                 if let Ok(result) = result {
@@ -103,8 +124,27 @@ impl ControlSession {
                             Ok((response, _bytes_written)) => {
                                 // verify if the mode requested is supported
                                 if response.mode & self.supported_modes == response.mode {
-                                    self.state = ServerCtrlConnectionState::Authentication;
-                                    self.transition(socket)?;
+                                    let server_start = ServerStart {
+                                        mbz1: [0u8; 15],                    // Server's nonce
+                                        accept: AcceptFields::Ok, // Acceptance indicator (true if the server accepts the session)
+                                        server_iv: [0u8; 16],     // Server's nonce
+                                        start_time: self.start_time.into(), // Server's identity, encrypted with the client's lic ke0y (optional)
+                                        mbz2: [0u8; 8],                     // Server's nonce
+                                    };
+                                    let result = socket.send(server_start);
+                                    match result {
+                                        // If successful, transition to the authentication state
+                                        Ok((_result, _)) => {
+                                            log::info!("Transition to Monitor");
+                                            self.state = ServerCtrlConnectionState::Monitor;
+                                        }
+                                        // If failed, transition to the error state or retry state
+                                        Err(_e) => {
+                                            return Err(CommonError::Generic(
+                                                "Error sending Greeting response".to_string(),
+                                            ));
+                                        }
+                                    }
                                 } else {
                                     return Err(CommonError::Generic(
                                         "Mode not supported".to_string(),
@@ -124,37 +164,38 @@ impl ControlSession {
                     }
                 }
             }
-            ServerCtrlConnectionState::Authentication => {
-                log::info!("Authenticating");
-
-                self.state = ServerCtrlConnectionState::Start;
-                self.transition(socket)?;
-            }
-            ServerCtrlConnectionState::Start => {
+            ServerCtrlConnectionState::Monitor => {
                 let result = socket.receive(&mut self.rx_buffer);
-                log::info!("Received message in Start");
+                log::info!("Received message in Monitor");
                 if let Ok(result) = result {
                     if result.0 != 0 {
                         match RequestTwSession::try_from_be_bytes(&self.rx_buffer) {
                             Ok((response, _bytes_written)) => {
                                 match response.request_type {
                                     TwampControlCommand::Forbidden => {
-                                        println!("Unimplemented!");
+                                        println!("Forbidden!");
                                     }
                                     TwampControlCommand::StartSessions => {
                                         // Start sessions
-                                        self.state = ServerCtrlConnectionState::Monitor;
+                                        self.state = ServerCtrlConnectionState::Start;
                                         self.transition(socket)?;
                                     }
                                     TwampControlCommand::StopSessions => {
-                                        println!("Unimplemented!");
+                                        // We must unregister the sessions socket from the event loop and cleanup
+                                        log::info!("Received StopSessions");
+                                        let _ = self
+                                            .worker_event_sender
+                                            .try_lock()?
+                                            .send(EventLoopMessages::Clean);
                                     }
                                     TwampControlCommand::RequestTwSession => {
-                                        log::info!("Received RequestTwSession: {:?}", response);
+                                        log::info!("Received RequestTwSession");
                                         // Check if port is already in use, if not, propose the next available
-                                        let response_ip = response.receiver_address;
-                                        let response_port = response.receiver_port;
-                                        let source_ip = SocketAddr::V4(SocketAddrV4::new(
+                                        let response_ip = response.reflector_address;
+                                        let response_port = response.reflector_port;
+                                        let response_sender_ip = response.sender_address;
+                                        let response_sender_port = response.sender_port;
+                                        let source_address = SocketAddr::V4(SocketAddrV4::new(
                                             Ipv4Addr::new(
                                                 response_ip[0],
                                                 response_ip[1],
@@ -163,32 +204,42 @@ impl ControlSession {
                                             ),
                                             response_port,
                                         ));
-                                        let ref_wait = response.timeout as u64;
-                                        // let session = self
-                                        //     .twamp_sessions
-                                        //     .iter()
-                                        //     .find(|session| {
-                                        //         session.configuration.source_ip_address.port()
-                                        //             == response.receiver_port
-                                        //     })
-                                        //     .get_or_insert(&mut TestSessionReflector::new(
-                                        //         "sid".to_string(),
-                                        //         Configuration::new(&source_ip, ref_wait),
-                                        //     ));
-                                        // let udp_socket =
-                                        //     TestSessionReflector::create_socket(&source_ip)?;
-                                        // let sessions = Arc::new(RwLock::new(Vec::new()));
-                                        // let callback = rx_callback(source_ip, sessions)?;
-                                        // let _ = self.worker_event_sender.lock().unwrap().send(
-                                        //     EventLoopMessages::Register((
-                                        //         udp_socket,
-                                        //         Box::new(callback),
-                                        //     )),
-                                        // );
+                                        let sender_address = SocketAddr::V4(SocketAddrV4::new(
+                                            Ipv4Addr::new(
+                                                response_sender_ip[0],
+                                                response_sender_ip[1],
+                                                response_sender_ip[2],
+                                                response_sender_ip[3],
+                                            ),
+                                            response_sender_port,
+                                        ));
+
+                                        let mut sessions_lock = self.twamp_sessions.write()?;
+                                        let mut session_iter = sessions_lock.iter_mut();
+                                        let mut session_option = session_iter.find(|session| {
+                                            session.rx_socket_address.port()
+                                                == response.reflector_port
+                                        });
+                                        let test_session_reflector =
+                                            &mut Session::new(source_address, sender_address);
+                                        let session =
+                                            session_option.get_or_insert(test_session_reflector);
+                                        let udp_socket = session.create_udp_socket()?;
+                                        drop(sessions_lock);
+
+                                        let _ = self.worker_event_sender.try_lock()?.send(
+                                            EventLoopMessages::Register((
+                                                udp_socket,
+                                                Box::new(rx_callback(
+                                                    source_address,
+                                                    self.twamp_sessions.clone(),
+                                                )?),
+                                            )),
+                                        );
                                         let accept_message = AcceptSessionMessage::new(
                                             AcceptFields::Ok,
                                             0,
-                                            response.receiver_port,
+                                            response.reflector_port,
                                             [0; 16],
                                             [0; 12],
                                             [0; 16],
@@ -196,16 +247,27 @@ impl ControlSession {
                                         socket.send(accept_message)?;
                                     }
                                     TwampControlCommand::StartNSessions => {
-                                        println!("Unimplemented!");
+                                        unimplemented!("StartNSessions!");
                                     }
                                     TwampControlCommand::StartNAck => {
-                                        println!("Unimplemented!");
+                                        unimplemented!("StartNAck!");
                                     }
                                     TwampControlCommand::StopNSessions => {
-                                        println!("Unimplemented!");
+                                        unimplemented!("StopNSessions!");
                                     }
                                     TwampControlCommand::StopNAck => {
-                                        println!("Unimplemented!");
+                                        unimplemented!("StopNAck!");
+                                    }
+                                    _ => {
+                                        let accept_message = AcceptSessionMessage::new(
+                                            AcceptFields::NotSupported,
+                                            0,
+                                            response.reflector_port,
+                                            [0; 16],
+                                            [0; 12],
+                                            [0; 16],
+                                        );
+                                        socket.send(accept_message)?;
                                     }
                                 }
                             }
@@ -222,10 +284,16 @@ impl ControlSession {
                     }
                 }
             }
-            ServerCtrlConnectionState::Monitor => {
-                log::info!("Monitoring");
-                // Monitor each test session
-
+            ServerCtrlConnectionState::Start => {
+                log::info!("Starting");
+                // Send start ack message
+                let start_ack = ControlMessage {
+                    control_command: AcceptFields::Ok as u8,
+                    mbz: Default::default(),
+                    hmac: Default::default(),
+                };
+                socket.send(start_ack)?;
+                self.state = ServerCtrlConnectionState::Monitor;
                 // If any test session completes, do:
                 // If it completes successfully,
                 // If any test session fails, transition to the error state or retry state
@@ -253,4 +321,67 @@ impl ControlSession {
         }
         Ok(())
     }
+}
+
+pub fn rx_callback(
+    rx_socket_address: SocketAddr,
+    sessions: Arc<RwLock<Vec<Session>>>,
+) -> Result<
+    impl Fn(&mut TimestampedUdpSocket, network_commons::event_loop::Token) -> Result<isize, CommonError>,
+    CommonError,
+> {
+    Ok(move |inner_socket: &mut TimestampedUdpSocket, _| {
+        let buffer = &mut [0; 1 << 16];
+        let (result, socket_address, timestamp) = inner_socket.receive_from(buffer)?;
+        let (twamp_test_message, _bytes_written): (SenderMessage, usize) =
+            SenderMessage::try_from_be_bytes(&buffer[..result.max(0) as usize])?;
+        let mut sessions_lock = sessions.write().unwrap();
+        let session_option = sessions_lock.iter().find(|session| {
+            (session.rx_socket_address == rx_socket_address)
+                && (session.tx_socket_address == socket_address)
+        });
+
+        if let Some(session) = session_option {
+            let reflected_message = ReflectedMessage {
+                reflector_sequence_number: session.seq_number.load(Ordering::SeqCst),
+                timestamp: NtpTimestamp::from(DateTime::utc_now()),
+                error_estimate: ErrorEstimate::new(1, 0, 1, 1),
+                mbz1: 0,
+                receive_timestamp: NtpTimestamp::from(timestamp),
+                sender_sequence_number: twamp_test_message.sequence_number,
+                sender_timestamp: twamp_test_message.timestamp,
+                sender_error_estimate: twamp_test_message.error_estimate,
+                mbz2: 0,
+                sender_ttl: 255,
+                padding: vec![0_u8; twamp_test_message.padding.len() - MIN_UNAUTH_PADDING],
+            };
+            inner_socket.send_to(&socket_address, reflected_message.clone())?;
+            session.add_to_sent(reflected_message)?;
+        } else {
+            // Create session
+            let session = Session::new(rx_socket_address, socket_address);
+            // Create Reflected message
+            let reflected_message = ReflectedMessage {
+                reflector_sequence_number: session.seq_number.load(Ordering::SeqCst),
+                timestamp: NtpTimestamp::from(DateTime::utc_now()),
+                error_estimate: ErrorEstimate::new(0, 0, 0, 1),
+                mbz1: 0,
+                receive_timestamp: NtpTimestamp::from(timestamp),
+                sender_sequence_number: twamp_test_message.sequence_number,
+                sender_timestamp: twamp_test_message.timestamp,
+                sender_error_estimate: twamp_test_message.error_estimate,
+                mbz2: 0,
+                sender_ttl: 255,
+                padding: Vec::new(),
+            };
+            log::debug!("Reflected message: \n {:?}", reflected_message);
+            // Send message
+            inner_socket.send_to(&socket_address, reflected_message.clone())?;
+            // Add message results to session
+            session.add_to_sent(reflected_message)?;
+            // Store session
+            sessions_lock.push(session);
+        }
+        Ok(result)
+    })
 }

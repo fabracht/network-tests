@@ -3,7 +3,7 @@ use libc::close;
 use network_commons::epoll_loop::LinuxEventLoop as EventLoop;
 use std::{
     os::fd::{AsRawFd, IntoRawFd},
-    sync::{Arc, Mutex, RwLock},
+    sync::{Arc, RwLock},
 };
 
 use network_commons::{
@@ -12,7 +12,7 @@ use network_commons::{
 };
 
 use crate::{
-    twamp_common::message::{Mode, Modes},
+    twamp_common::data_model::{Mode, Modes},
     twamp_light_sender::result::TwampResult,
 };
 
@@ -44,7 +44,7 @@ impl Strategy<TwampResult, CommonError> for Control {
             Ok(())
         });
         // Get event sender from worker thread event loop
-        let worker_event_sender = rx.recv().unwrap();
+        let duplex_channel = rx.recv().unwrap();
 
         // Create the TcpSocket
         let addr = self.configuration.source_ip_address;
@@ -72,12 +72,10 @@ impl Strategy<TwampResult, CommonError> for Control {
                 let event_sender = event_sender.clone();
                 let (mut timestamped_socket, socket_address) = listener.accept()?;
                 let timestamped_socket_raw_fd = timestamped_socket.as_raw_fd();
-                let wes = Arc::new(Mutex::new(worker_event_sender.clone()));
-                let unauthenticated = Mode::Unauthenticated;
-                let authenticated = Mode::Authenticated;
+                let wes = duplex_channel.clone();
+
                 let mut modes = Modes::new(0);
-                modes.set(unauthenticated);
-                modes.set(authenticated);
+                modes.set(Mode::Unauthenticated);
 
                 let mut control_session =
                     ControlSession::new(timestamped_socket_raw_fd, modes, 1, 1, wes);
@@ -87,20 +85,19 @@ impl Strategy<TwampResult, CommonError> for Control {
                 control_session.transition(&mut timestamped_socket)?;
                 control_sessions.write().unwrap().push(control_session);
                 let arc_sessions = Arc::clone(&control_sessions);
-                let _ = event_sender.send(EventLoopMessages::Register((
+                let _ = event_sender.try_lock()?.send(EventLoopMessages::Register((
                     timestamped_socket,
                     Box::new(move |socket, _token| {
                         let mut cs_lock = arc_sessions.try_write().unwrap();
                         let control_session_entry = cs_lock
                             .iter_mut()
-                            .find(|session| &session.id == &socket.as_raw_fd());
+                            .find(|session| session.id == socket.as_raw_fd());
                         if let Some(cs) = control_session_entry {
                             if let Err(e) = cs.transition(socket) {
                                 log::info!("Closing control socket, {}", e);
                                 unsafe { close(socket.as_raw_fd()) };
                             }
                         }
-
                         Ok(0)
                     }),
                 )));

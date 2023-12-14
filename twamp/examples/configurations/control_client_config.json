@@ -1,0 +1,13 @@
+{
+    "mode": "FULL_SENDER",
+    "source_ip_address": "0.0.0.0:45577",
+    "control_host": "127.0.0.1:45572",
+    "test_session_hosts": [
+        "127.0.0.1:45573"
+    ],
+    "collection_period": 3,
+    "packet_interval": 250,
+    "padding": 41,
+    "ref_wait": 1,
+    "last_message_timeout": 1
+}

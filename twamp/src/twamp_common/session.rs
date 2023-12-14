@@ -1,14 +1,18 @@
-use network_commons::{error::CommonError, stats::offset_estimator::estimate, time::DateTime};
+use network_commons::{
+    error::CommonError, socket::Socket, stats::offset_estimator::estimate, time::DateTime,
+    udp_socket::TimestampedUdpSocket,
+};
 
 use std::{
-    net::{IpAddr, Ipv4Addr, SocketAddr},
+    net::SocketAddr,
+    os::fd::IntoRawFd,
     sync::{
         atomic::{AtomicU32, Ordering},
         Arc, RwLock,
     },
 };
 
-use super::message::{Message, PacketResults, SessionPackets, TimestampsResult};
+use super::data_model::{Message, PacketResults, SessionPackets, TimestampsResult};
 
 /// A `Session` represents a communication with a remote sender.
 /// It maintains a sequence number and a collection of `PacketResults`.
@@ -35,32 +39,21 @@ impl Session {
         }
     }
 
-    /// Creates a new `Session` from a `SocketAddr`.
-    pub fn from_socket_address(host: &SocketAddr) -> Self {
-        Self {
-            rx_socket_address: SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
-            tx_socket_address: *host,
-            seq_number: AtomicU32::new(0),
-            results: Arc::new(RwLock::new(Vec::new())),
-            last_updated: 0,
-        }
-    }
-
     /// Adds a received packet to the session's results.
     /// The method finds the matching sent packet by sequence number and updates its fields.
     pub fn add_to_received(&self, message: impl Message, t4: DateTime) -> Result<(), CommonError> {
         let mut write_lock = self.results.write()?;
         let packet_results = message.packet_results();
-        write_lock
+        if let Some(results) = write_lock
             .iter_mut()
             .find(|result| result.sender_seq == packet_results.sender_seq)
-            .map(|results| {
-                results.reflector_seq = packet_results.reflector_seq;
-                results.t2 = packet_results.t2;
-                results.t3 = packet_results.t3;
-                results.t4 = Some(t4);
-                log::debug!("Received packet results {:#?}", results);
-            });
+        {
+            results.reflector_seq = packet_results.reflector_seq;
+            results.t2 = packet_results.t2;
+            results.t3 = packet_results.t3;
+            results.t4 = Some(t4);
+            log::debug!("Received packet results {:#?}", results);
+        };
         Ok(())
     }
 
@@ -197,5 +190,15 @@ impl Session {
         b_offset /= b_len as f64;
 
         Some((f_offset - b_offset) / 2.0)
+    }
+
+    pub fn create_udp_socket(&mut self) -> Result<TimestampedUdpSocket, CommonError> {
+        let socket = mio::net::UdpSocket::bind(self.rx_socket_address)?;
+        let mut my_socket = TimestampedUdpSocket::new(socket.into_raw_fd());
+        my_socket.set_fcntl_options()?;
+        my_socket.set_socket_options(libc::SOL_IP, libc::IP_RECVERR, Some(1))?;
+        my_socket.set_timestamping_options()?;
+
+        Ok(my_socket)
     }
 }

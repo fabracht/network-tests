@@ -1,88 +1,17 @@
 #![allow(dead_code)]
 
+use std::net::IpAddr;
+
 use bebytes::BeBytes;
-use core::time::Duration;
 use network_commons::{
     error::CommonError,
     time::{DateTime, NtpTimestamp},
 };
-use serde::{ser::SerializeStruct, Deserialize, Serialize, Serializer};
-use std::{
-    net::{IpAddr, SocketAddr},
-    ops::BitAnd,
+
+use super::{
+    data_model::{AcceptFields, ErrorEstimate, Message, Modes, PacketResults, TwampControlCommand},
+    MIN_UNAUTH_PADDING,
 };
-
-/// `PacketResults` represents a generic message with four timestamps.
-/// Fields that might not be available are optional.
-#[derive(Debug, Deserialize, Clone, Copy)]
-pub struct PacketResults {
-    pub sender_seq: u32,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub reflector_seq: Option<u32>,
-    pub t1: DateTime,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub t2: Option<DateTime>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub t3: Option<DateTime>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub t4: Option<DateTime>,
-}
-/// `SessionPackets` holds the address and optionally the packets of a test session.
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct SessionPackets {
-    pub address: SocketAddr,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub packets: Option<Vec<PacketResults>>,
-}
-
-/// `TimestampsResult` is the result of a test session, including an error string if there was an issue.
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct TimestampsResult {
-    pub session: SessionPackets,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
-}
-
-impl Serialize for PacketResults {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let mut s = serializer.serialize_struct("PacketResults", 6)?;
-        s.serialize_field("sender_seq", &self.sender_seq)?;
-        s.serialize_field("reflector_seq", &self.reflector_seq)?;
-        s.serialize_field("t1", &self.t1)?;
-        s.serialize_field("t2", &self.t2)?;
-        s.serialize_field("t3", &self.t3)?;
-        s.serialize_field("t4", &self.t4)?;
-        s.end()
-    }
-}
-
-impl PacketResults {
-    pub fn calculate_rtt(&self) -> Option<Duration> {
-        Some(self.t4? - self.t1)
-    }
-    pub fn calculate_owd_forward(&self) -> Option<Duration> {
-        let duration = self.t2? - self.t1;
-        log::debug!("OWD Forward Duration: {:?}", duration);
-
-        Some(duration)
-    }
-    pub fn calculate_owd_backward(&self) -> Option<Duration> {
-        let duration = self.t4? - self.t3?;
-        log::debug!("OWD Backward Duration: {:?}", duration);
-        Some(duration)
-    }
-    /// Calculates the Remote Processing Delay, which is the time the packet took to be processed on the server
-    pub fn calculate_rpd(&self) -> Option<Duration> {
-        Some(self.t3? - self.t2?)
-    }
-}
-
-pub trait Message {
-    fn packet_results(&self) -> PacketResults;
-}
 
 /// Unauthenticated TWAMP message as defined
 /// in [RFC4656 Section 4.1.2](https://www.rfc-editor.org/rfc/rfc4656#section-4.1.2)
@@ -153,19 +82,6 @@ impl Message for ReflectedMessage {
     }
 }
 
-/// Estimation on the error on a timestamp based
-/// on synchronization method used [RFC4656 Section 4.1.2](https://www.rfc-editor.org/rfc/rfc4656#section-4.1.2)
-#[derive(BeBytes, Debug, PartialEq, Eq, Clone, Copy)]
-pub struct ErrorEstimate {
-    #[U8(size(1), pos(0))]
-    pub s_bit: u8,
-    #[U8(size(1), pos(1))]
-    pub z_bit: u8,
-    #[U8(size(6), pos(2))]
-    pub scale: u8,
-    pub multiplier: u8,
-}
-
 // Define the TWAMP Server Greeting message struct
 #[derive(BeBytes, Debug, Default)]
 pub struct ServerGreeting {
@@ -177,43 +93,6 @@ pub struct ServerGreeting {
     pub mbz: [u8; 12],       // Must be zero (MBZ) octets
 }
 
-#[derive(Debug, PartialEq, Clone, Copy)]
-pub enum Mode {
-    Closed = 0b0000,
-    Unauthenticated = 0b0001,
-    Authenticated = 0b0010,
-    Encrypted = 0b0100,
-}
-
-#[derive(BeBytes, Debug, PartialEq, Clone, Copy, Default)]
-pub struct Modes {
-    pub bits: u8,
-}
-
-impl Modes {
-    pub fn set(&mut self, mode: Mode) {
-        self.bits |= mode as u8;
-    }
-
-    pub fn unset(&mut self, mode: Mode) {
-        self.bits &= !(mode as u8);
-    }
-
-    pub fn is_set(&self, mode: Mode) -> bool {
-        self.bits & (mode as u8) == mode as u8
-    }
-}
-
-impl BitAnd for Modes {
-    type Output = Modes;
-
-    fn bitand(self, rhs: Self) -> Self::Output {
-        Modes {
-            bits: self.bits & rhs.bits,
-        }
-    }
-}
-
 // Define the TWAMP Client Setup Response message struct
 #[derive(BeBytes, Debug, PartialEq, Clone)]
 pub struct ClientSetupResponse {
@@ -223,20 +102,20 @@ pub struct ClientSetupResponse {
     pub client_iv: [u8; 16],
 }
 
+// Define the TWAMP Server Start message struct
 #[derive(BeBytes, Debug, PartialEq, Clone)]
-pub enum AcceptFields {
-    Ok = 0,
-    Failure = 1,
-    InternalError = 2,
-    NotSupported = 3,
-    PermanentResourceLimitation = 4,
-    TemporaryResourceLimitation = 5,
+pub struct ServerStart {
+    pub mbz1: [u8; 15],           // Server's nonce
+    pub accept: AcceptFields,     // Acceptance indicator (true if the server accepts the session)
+    pub server_iv: [u8; 16],      // Server's nonce
+    pub start_time: NtpTimestamp, // Server's identity, encrypted with the client's public key (optional)
+    pub mbz2: [u8; 8],            // Server's nonce
 }
 
 // Define the TWAMP Control message struct used to negotiate sessions
 #[derive(BeBytes, Debug)]
 pub struct ControlMessage {
-    pub control_command: TwampControlCommand,
+    pub control_command: u8,
     pub mbz: [u8; 15],
     pub hmac: [u8; 16],
 }
@@ -261,19 +140,6 @@ pub struct AcceptSessionMessage {
     pub hmac: [u8; 16],
 }
 
-#[derive(BeBytes, Debug, PartialEq, Clone, Default)]
-pub enum TwampControlCommand {
-    #[default]
-    Forbidden = 1,
-    StartSessions = 2,
-    StopSessions = 3,
-    RequestTwSession = 5,
-    StartNSessions = 7,
-    StartNAck = 8,
-    StopNSessions = 9,
-    StopNAck = 10,
-}
-
 // Define the Request-Tw-Session message struct
 #[derive(BeBytes, Debug)]
 pub struct RequestTwSession {
@@ -287,11 +153,11 @@ pub struct RequestTwSession {
     pub num_schedule_slots: u32,           // Schedule-Slots
     pub num_packets: u32,                  // Packets
     pub sender_port: u16,                  // Sender-Port
-    pub receiver_port: u16,                // Receiver-Port
+    pub reflector_port: u16,               // Receiver-Port as per RFC5357
     pub sender_address: [u8; 16],          // Sender-Address
-    pub receiver_address: [u8; 16],        // Receiver-Address
+    pub reflector_address: [u8; 16],       // Receiver-Address as per RFC5357
     pub sid: [u8; 16],                     // SID
-    pub padding_length: [u8; 4],           // Padding
+    pub padding_length: u32,               // Padding
     pub start_time: NtpTimestamp,          // NtpTimestamp
     pub timeout: u32,                      // Timeout
     pub type_p: u8,                        // Type-P
@@ -311,7 +177,7 @@ pub struct RequestTwSessionBuilder {
     sender_address: Option<IpAddr>,
     receiver_address: Option<IpAddr>,
     sid: Option<[u8; 16]>,
-    padding_length: Option<[u8; 4]>,
+    padding_length: Option<u32>,
     start_time: Option<NtpTimestamp>,
     timeout: Option<u32>,
     type_p: Option<u8>,
@@ -370,13 +236,13 @@ impl RequestTwSessionBuilder {
         self
     }
 
-    pub fn sender_address(mut self, sender_address: Option<IpAddr>) -> Self {
-        self.sender_address = sender_address;
+    pub fn sender_address(mut self, sender_address: IpAddr) -> Self {
+        self.sender_address = Some(sender_address);
         self
     }
 
-    pub fn receiver_address(mut self, receiver_address: Option<IpAddr>) -> Self {
-        self.receiver_address = receiver_address;
+    pub fn receiver_address(mut self, receiver_address: IpAddr) -> Self {
+        self.receiver_address = Some(receiver_address);
         self
     }
 
@@ -385,7 +251,7 @@ impl RequestTwSessionBuilder {
         self
     }
 
-    pub fn padding_length(mut self, padding_length: [u8; 4]) -> Self {
+    pub fn padding_length(mut self, padding_length: u32) -> Self {
         self.padding_length = Some(padding_length);
         self
     }
@@ -475,17 +341,16 @@ impl RequestTwSessionBuilder {
             request_type: self.request_type.unwrap_or_default(),
             mbz1: 0,
             ipvn: self.ipvn.unwrap_or(0),
-            // Both the Conf-Sender field and Conf-Receiver field MUST be set to 0 since the Session-Reflector will both receive and send packets
-            conf_sender: 0,
-            conf_receiver: 0,
+            conf_sender: 0,   // set to 0 as per RFC5357
+            conf_receiver: 0, // set to 0 as per RFC5357
             num_schedule_slots: self.num_schedule_slots.unwrap_or(0),
             num_packets: self.num_packets.unwrap_or(0),
             sender_port: self.sender_port.unwrap_or(0),
-            receiver_port: self.receiver_port.unwrap_or(0),
+            reflector_port: self.receiver_port.unwrap_or(0),
             sender_address,
-            receiver_address,
+            reflector_address: receiver_address,
             sid: self.sid.unwrap_or([0; 16]),
-            padding_length: self.padding_length.unwrap_or([0; 4]),
+            padding_length: self.padding_length.unwrap_or(MIN_UNAUTH_PADDING as u32),
             start_time: self.start_time.unwrap(),
             timeout: self.timeout.unwrap_or(0),
             type_p: self.type_p.unwrap_or(0),

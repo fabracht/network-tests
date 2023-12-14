@@ -9,7 +9,6 @@ pub mod twamp_light;
 #[derive(Validate, Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub struct Configuration {
     pub hosts: Vec<SocketAddr>,
-    pub mode: String,
     pub source_ip_address: SocketAddr,
     #[validate(range(min = 1, max = 3600))]
     pub duration: u64,
@@ -34,7 +33,6 @@ impl Configuration {
     ) -> Self {
         Self {
             hosts: hosts.to_owned(),
-            mode: "LIGHT".to_string(),
             source_ip_address: source_ip_address.to_owned(),
             duration,
             packet_interval,
