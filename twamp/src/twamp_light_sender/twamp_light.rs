@@ -20,7 +20,7 @@ use crate::twamp_common::{session::Session, MIN_UNAUTH_PADDING};
 use crate::twamp_light_sender::Configuration as TwampLightConfiguration;
 use core::time::Duration;
 use std::{
-    borrow::{Borrow, BorrowMut},
+    borrow::BorrowMut,
     net::SocketAddr,
     os::fd::IntoRawFd,
     sync::{atomic::Ordering, Arc, RwLock},
@@ -390,7 +390,7 @@ pub fn create_rx_callback(
                                 "Obtained write lock, looking for session {}",
                                 socket_address
                             );
-                            let borrowed_sessions = rw_lock_write_guard.borrow();
+                            let borrowed_sessions = rw_lock_write_guard;
                             let session_option = borrowed_sessions
                                 .iter()
                                 .find(|session| session.tx_socket_address == *socket_address);
