@@ -2,7 +2,7 @@
 /// `CommonError` is an enum containing error variants which are likely to be used across different parts of the codebase.
 use std::error::Error;
 use std::fmt::{Display, Formatter, Result as FmtResult};
-use std::sync::{PoisonError, RwLockWriteGuard};
+use std::sync::{PoisonError, RwLockWriteGuard, TryLockError};
 
 /// A handy Result type specific to the common error set defined by `CommonError`.
 pub type Result<T> = std::result::Result<T, CommonError>;
@@ -20,6 +20,7 @@ pub enum CommonError {
     Generic(String),
     ValidationError(validator::ValidationErrors),
     SendError(String),
+    TryRecvError(String),
     IterError(String),
     SocketCreateFailed(std::io::Error),
     SocketConnectFailed(std::io::Error),
@@ -46,6 +47,7 @@ impl Display for CommonError {
             CommonError::SendError(e) => {
                 write!(f, "Failed to send: {}", e)
             }
+            CommonError::TryRecvError(e) => write!(f, "Failed to receive: {}", e),
             CommonError::IterError(e) => {
                 write!(f, "Failed to iterate: {}", e)
             }
@@ -105,6 +107,12 @@ impl<T> From<PoisonError<RwLockWriteGuard<'_, Vec<T>>>> for CommonError {
     }
 }
 
+impl<T> From<TryLockError<T>> for CommonError {
+    fn from(_: TryLockError<T>) -> Self {
+        CommonError::Lock
+    }
+}
+
 impl From<&str> for CommonError {
     fn from(s: &str) -> Self {
         CommonError::Generic(s.to_owned())
@@ -120,5 +128,17 @@ impl From<String> for CommonError {
 impl From<Box<dyn std::error::Error>> for CommonError {
     fn from(e: Box<dyn std::error::Error>) -> Self {
         CommonError::Generic(e.to_string())
+    }
+}
+
+impl From<std::sync::mpsc::TryRecvError> for CommonError {
+    fn from(e: std::sync::mpsc::TryRecvError) -> Self {
+        CommonError::TryRecvError(e.to_string())
+    }
+}
+
+impl<T> From<std::sync::mpsc::SendError<T>> for CommonError {
+    fn from(e: std::sync::mpsc::SendError<T>) -> Self {
+        CommonError::SendError(e.to_string())
     }
 }

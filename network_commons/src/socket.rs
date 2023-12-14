@@ -32,7 +32,7 @@ pub trait Socket<T: AsRawFd>: Sized + AsRawFd {
     ///
     /// This function will error out when called on a non-connected socket. Always ensure that
     /// the socket is connected before attempting to send data.
-    fn send(&self, message: impl BeBytes) -> Result<(usize, DateTime), CommonError>;
+    fn send(&self, message: impl BeBytes) -> Result<(isize, DateTime), CommonError>;
 
     /// Sends the given message to the specified socket address.
     ///
@@ -48,7 +48,7 @@ pub trait Socket<T: AsRawFd>: Sized + AsRawFd {
         &self,
         address: &SocketAddr,
         message: impl BeBytes,
-    ) -> Result<(usize, DateTime), CommonError>;
+    ) -> Result<(isize, DateTime), CommonError>;
 
     /// Receives data from the socket into the given buffer.
     ///
@@ -59,7 +59,7 @@ pub trait Socket<T: AsRawFd>: Sized + AsRawFd {
     /// # Returns
     ///
     /// A `Result` that contains the number of bytes received and the DateTime when the message was received, or a `CommonError` if an error occurred.
-    fn receive(&self, buffer: &mut [u8]) -> Result<(usize, DateTime), CommonError>;
+    fn receive(&self, buffer: &mut [u8]) -> Result<(isize, DateTime), CommonError>;
 
     /// Receives data from the socket into the given buffer, along with the address of the sender.
     ///
@@ -71,7 +71,7 @@ pub trait Socket<T: AsRawFd>: Sized + AsRawFd {
     ///
     /// A `Result` that contains the number of bytes received, the sender's address, and the DateTime when the message was received, or a `CommonError` if an error occurred.
     fn receive_from(&self, buffer: &mut [u8])
-        -> Result<(usize, SocketAddr, DateTime), CommonError>;
+        -> Result<(isize, SocketAddr, DateTime), CommonError>;
 
     fn set_socket_options(
         &mut self,
@@ -79,19 +79,17 @@ pub trait Socket<T: AsRawFd>: Sized + AsRawFd {
         name: i32,
         value: Option<i32>,
     ) -> Result<i32, CommonError> {
-        let res = libc_call!(setsockopt(
+        libc_call!(setsockopt(
             self.as_raw_fd(),
             level,
             name,
             &value.unwrap_or(0) as *const std::ffi::c_int as *const std::ffi::c_void,
             std::mem::size_of_val(&value) as libc::socklen_t
         ))
-        .map_err(CommonError::Io)?;
-        log::debug!("setsockopt:level {}, name {}, res {}", level, name, res);
-        Ok(res)
+        .map_err(CommonError::Io)
     }
 
-    fn set_fcntl_options(&self) -> Result<(), CommonError> {
+    fn set_fcntl_options(&self) -> Result<i32, CommonError> {
         // Get current flags
         let flags = libc_call!(fcntl(self.as_raw_fd(), libc::F_GETFL)).map_err(CommonError::Io)?;
 
@@ -99,10 +97,7 @@ pub trait Socket<T: AsRawFd>: Sized + AsRawFd {
         let new_flags = flags | libc::O_NONBLOCK | libc::O_CLOEXEC;
 
         // Set the new flags
-        let _res = libc_call!(fcntl(self.as_raw_fd(), libc::F_SETFL, new_flags))
-            .map_err(CommonError::Io)?;
-
-        Ok(())
+        libc_call!(fcntl(self.as_raw_fd(), libc::F_SETFL, new_flags)).map_err(CommonError::Io)
     }
 
     fn set_timestamping_options(&mut self) -> Result<i32, CommonError> {

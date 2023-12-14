@@ -44,20 +44,45 @@ impl LcgRng {
     }
 }
 
-/// Estimates the alpha and beta parameters for the Gamma distribution based on the sample data provided.
+// /// Estimates the alpha and beta parameters for the Gamma distribution based on the sample data provided.
+// fn estimate_alpha_beta_from_owd<'a, I>(x: I) -> (f64, f64)
+// where
+//     I: IntoIterator<Item = &'a f64>,
+//     I::IntoIter: ExactSizeIterator + Clone,
+// {
+//     let x_vec: Vec<_> = x.into_iter().cloned().collect();
+//     let n = x_vec.len() as f64;
+//     let sum_x = x_vec.iter().sum::<f64>();
+//     let mean_x = sum_x / n;
+//     let sum_sq_diff = x_vec.iter().map(|&xi| (xi - mean_x).powi(2)).sum::<f64>();
+//     let var_x = sum_sq_diff / (n - 1.0);
+//     let alpha = mean_x.powi(2) / var_x;
+//     let beta = var_x / mean_x;
+//     (alpha, beta)
+// }
+/// Estimates the alpha and beta parameters for the Gamma distribution based on the sample data provided,
+/// using the median instead of the mean.
 fn estimate_alpha_beta_from_owd<'a, I>(x: I) -> (f64, f64)
 where
     I: IntoIterator<Item = &'a f64>,
     I::IntoIter: ExactSizeIterator + Clone,
 {
-    let x_vec: Vec<_> = x.into_iter().cloned().collect();
+    let mut x_vec: Vec<_> = x.into_iter().cloned().collect();
     let n = x_vec.len() as f64;
-    let sum_x = x_vec.iter().sum::<f64>();
-    let mean_x = sum_x / n;
-    let sum_sq_diff = x_vec.iter().map(|&xi| (xi - mean_x).powi(2)).sum::<f64>();
+    // Sort the sample data to find the median
+    x_vec.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let median_x = if x_vec.len() % 2 == 0 {
+        let mid = x_vec.len() / 2;
+        (x_vec[mid - 1] + x_vec[mid]) / 2.0
+    } else {
+        x_vec[x_vec.len() / 2]
+    };
+
+    // Use the median in place of the mean to estimate alpha and beta
+    let sum_sq_diff = x_vec.iter().map(|&xi| (xi - median_x).powi(2)).sum::<f64>();
     let var_x = sum_sq_diff / (n - 1.0);
-    let alpha = mean_x.powi(2) / var_x;
-    let beta = var_x / mean_x;
+    let alpha = median_x.powi(2) / var_x;
+    let beta = var_x / median_x;
     (alpha, beta)
 }
 
@@ -134,12 +159,7 @@ where
 {
     let time_values_vec: Vec<f64> = time_values.into_iter().collect();
     let n = time_values_vec.len();
-    let (mut alpha, mut beta) = estimate_alpha_beta_from_owd(&time_values_vec);
-    if beta > 1.5 {
-        beta = 1.5;
-    } else if beta < 0.1 {
-        beta = 0.1;
-    }
+    let (mut alpha, beta) = estimate_alpha_beta_from_owd(&time_values_vec);
     if alpha > 4.0 {
         alpha = 4.0;
     } else if alpha < 1.0 {

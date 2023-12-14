@@ -77,6 +77,7 @@ impl TimestampedUdpSocket {
     /// This method returns an error if the socket cannot be bound to the provided
     /// address.
     pub fn bind(addr: &SocketAddr) -> Result<Self, CommonError> {
+        #[cfg(target_os = "linux")]
         let socket_fd = match addr {
             SocketAddr::V4(_) => unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) },
             SocketAddr::V6(_) => unsafe { libc::socket(libc::AF_INET6, libc::SOCK_DGRAM, 0) },
@@ -94,7 +95,7 @@ impl TimestampedUdpSocket {
                 unsafe {
                     (*sockaddr_in).sin_family = libc::AF_INET as libc::sa_family_t;
                     (*sockaddr_in).sin_port = a.port().to_be();
-                    (*sockaddr_in).sin_addr.s_addr = u32::from_be_bytes(a.ip().octets());
+                    (*sockaddr_in).sin_addr.s_addr = u32::from_le_bytes(a.ip().octets());
                 }
                 (
                     sockaddr_in as *const libc::sockaddr,
@@ -201,9 +202,9 @@ impl TimestampedUdpSocket {
                 &mut timeout as *mut timespec, // wait for 1ms
             )
         };
-
         if result < 0 {
-            return Err(io::Error::last_os_error());
+            let last_os_error = io::Error::last_os_error();
+            return Err(last_os_error);
         }
 
         let mut received_data = Vec::new();
@@ -243,10 +244,12 @@ impl TimestampedUdpSocket {
                     received_data.push((msg_hdrs[i].msg_len as usize, socket_addr, ts));
                     continue;
                 }
+                // Check for TOS value
+                if cmsg.cmsg_level == libc::IPPROTO_IP && cmsg.cmsg_type == libc::IP_TOS {
+                    let tos_value: u8 = unsafe { *(libc::CMSG_DATA(cmsg) as *const u8) };
+                    log::debug!("TOS value: {}", tos_value);
+                }
             }
-            // You will need to use a different approach to retrieve timestamps.
-            // For now, I'm returning a dummy Timespec value.
-            // received_data.push((msg_hdrs[i].msg_len as usize, socket_addr));
         }
 
         Ok(received_data)
@@ -331,7 +334,6 @@ impl TimestampedUdpSocket {
             Ok(timestamps)
         } else {
             let last_os_error = std::io::Error::last_os_error();
-            // log::error!("{}", last_os_error);
             Err(CommonError::Io(last_os_error))
         }
     }
@@ -370,10 +372,7 @@ impl TimestampedUdpSocket {
                 let mut cmsg = unsafe { libc::CMSG_FIRSTHDR(&msgh) };
                 while !cmsg.is_null() {
                     unsafe {
-                        log::debug!("cmsg_level: {}", (*cmsg).cmsg_level);
-                        log::debug!("cmsg_type: {}", (*cmsg).cmsg_type);
                         let data = libc::CMSG_DATA(cmsg);
-
                         if (*cmsg).cmsg_level == libc::SOL_SOCKET
                             && (*cmsg).cmsg_type == libc::SCM_TIMESTAMPING
                         {
@@ -385,7 +384,6 @@ impl TimestampedUdpSocket {
                 }
             } else {
                 let err = std::io::Error::last_os_error();
-                log::error!("recvmmsg failed: {}", err);
                 return Err(CommonError::Io(err));
             }
 
@@ -426,7 +424,7 @@ impl Socket<TimestampedUdpSocket> for TimestampedUdpSocket {
         Self { inner: fd }
     }
 
-    fn send(&self, buffer: impl BeBytes) -> Result<(usize, DateTime), CommonError> {
+    fn send(&self, buffer: impl BeBytes) -> Result<(isize, DateTime), CommonError> {
         let data = buffer.to_be_bytes();
         let length = data.len();
 
@@ -434,14 +432,14 @@ impl Socket<TimestampedUdpSocket> for TimestampedUdpSocket {
         let result = libc_call!(send(self.inner, data.as_ptr() as *const _, length, 0))
             .map_err(CommonError::Io)?;
 
-        Ok((result as usize, timestamp))
+        Ok((result, timestamp))
     }
 
     fn send_to(
         &self,
         address: &SocketAddr,
         message: impl BeBytes,
-    ) -> Result<(usize, DateTime), CommonError> {
+    ) -> Result<(isize, DateTime), CommonError> {
         let fd = self.as_raw_fd();
         let utc_now: DateTime;
         let bytes = message.to_be_bytes();
@@ -450,8 +448,6 @@ impl Socket<TimestampedUdpSocket> for TimestampedUdpSocket {
         let result: isize;
         match address.ip() {
             IpAddr::V4(ipv4) => {
-                log::debug!("ipv4 address {}", ipv4.to_string());
-
                 #[cfg(target_os = "linux")]
                 let mut sockaddr = sockaddr_in {
                     sin_family: libc::AF_INET as u16,
@@ -503,18 +499,17 @@ impl Socket<TimestampedUdpSocket> for TimestampedUdpSocket {
                 result = unsafe { sendmsg(fd, &msg, 0) };
             }
         }
-
-        Ok((result as usize, utc_now))
+        Ok((result, utc_now))
     }
 
-    fn receive(&self, _buffer: &mut [u8]) -> Result<(usize, DateTime), CommonError> {
+    fn receive(&self, _buffer: &mut [u8]) -> Result<(isize, DateTime), CommonError> {
         unimplemented!()
     }
 
     fn receive_from(
         &self,
         buffer: &mut [u8],
-    ) -> Result<(usize, SocketAddr, DateTime), CommonError> {
+    ) -> Result<(isize, SocketAddr, DateTime), CommonError> {
         let fd = self.as_raw_fd();
         let mut addr_storage: sockaddr_storage = unsafe { core::mem::zeroed() };
 
@@ -525,7 +520,7 @@ impl Socket<TimestampedUdpSocket> for TimestampedUdpSocket {
         msg.msg_iov = iov.as_ptr() as *mut iovec;
         msg.msg_iovlen = iov.len();
         const SPACE_SIZE: usize =
-            unsafe { libc::CMSG_SPACE(core::mem::size_of::<libc::timeval>() as u32) as usize };
+            unsafe { libc::CMSG_SPACE(core::mem::size_of::<libc::timeval>() as u32) as usize + 8 };
         let mut cmsg_space: [u8; SPACE_SIZE] = unsafe { core::mem::zeroed() };
         msg.msg_control = cmsg_space.as_mut_ptr() as *mut libc::c_void;
         msg.msg_controllen = cmsg_space.len();
@@ -541,14 +536,8 @@ impl Socket<TimestampedUdpSocket> for TimestampedUdpSocket {
         let socket_addr = match addr_storage.ss_family as i32 {
             libc::AF_INET => {
                 let sockaddr: &libc::sockaddr_in = unsafe { core::mem::transmute(&addr_storage) };
-                let ip_bytes = sockaddr.sin_addr.s_addr.to_be_bytes();
                 SocketAddr::new(
-                    IpAddr::V4(Ipv4Addr::new(
-                        ip_bytes[3],
-                        ip_bytes[2],
-                        ip_bytes[1],
-                        ip_bytes[0],
-                    )),
+                    IpAddr::V4(Ipv4Addr::from(sockaddr.sin_addr.s_addr.to_be())),
                     sockaddr.sin_port.to_be(),
                 )
             }
@@ -565,17 +554,64 @@ impl Socket<TimestampedUdpSocket> for TimestampedUdpSocket {
         let mut cmsg = unsafe { libc::CMSG_FIRSTHDR(&msg) };
         while !cmsg.is_null() {
             unsafe {
-                if (*cmsg).cmsg_level == libc::SOL_SOCKET && (*cmsg).cmsg_type == libc::SO_TIMESTAMP
+                log::debug!(
+                    "Cmsg_level {} Cmsg_type {}",
+                    (*cmsg).cmsg_level,
+                    (*cmsg).cmsg_type
+                );
+                if (*cmsg).cmsg_level == libc::SOL_SOCKET
+                    && (*cmsg).cmsg_type == libc::SO_TIMESTAMPING
                 {
                     let tv: &libc::timespec = &*(libc::CMSG_DATA(cmsg) as *const libc::timespec);
                     // Overwrite the timestamp with the one from the kernel if available
                     timestamp = DateTime::from_timespec(*tv);
                     break;
                 }
+                // Check for TOS value
+                if (*cmsg).cmsg_level == libc::IPPROTO_IP && (*cmsg).cmsg_type == libc::IP_TOS {
+                    let tos_value: u8 = *(libc::CMSG_DATA(cmsg) as *const u8);
+                    log::debug!("TOS value: {}", tos_value);
+                }
                 cmsg = libc::CMSG_NXTHDR(&msg, cmsg);
             }
         }
 
-        Ok((n as usize, socket_addr, timestamp))
+        Ok((n, socket_addr, timestamp))
     }
+}
+
+#[derive(BeBytes, PartialEq, Debug, Clone)]
+struct Message {
+    pub data: Vec<u8>,
+}
+
+#[test]
+fn test_udp_socket_send_receive_address_parsing() {
+    // Bind the receiver to a specific address and port
+    let receiver_addr: SocketAddr = "127.0.0.1:12345".parse().unwrap();
+    let receiver_socket = TimestampedUdpSocket::bind(&receiver_addr).unwrap();
+
+    // Bind the sender to a different specific address and port
+    let sender_addr: SocketAddr = "127.0.0.1:54321".parse().unwrap();
+    let sender_socket = TimestampedUdpSocket::bind(&sender_addr).unwrap();
+
+    // Send data
+    let message = Message::new(b"Hello".to_vec());
+    sender_socket
+        .send_to(&receiver_addr, message.clone())
+        .unwrap();
+    receiver_socket
+        .send_to(&sender_addr, message.clone())
+        .unwrap();
+
+    // Receive data
+    let mut buffer1 = [0u8; 5];
+    let mut buffer2 = [0u8; 5];
+    let (_, received_sender_addr, _) = receiver_socket.receive_from(&mut buffer1).unwrap();
+    let (_, received_receiver_addr, _) = sender_socket.receive_from(&mut buffer2).unwrap();
+
+    // Assertions
+    assert_eq!(&buffer1, message.data.as_slice());
+    assert_eq!(received_sender_addr, sender_addr);
+    assert_eq!(received_receiver_addr, receiver_addr);
 }
