@@ -218,12 +218,8 @@ impl TimestampedTcpSocket {
     /// # Errors
     ///
     /// This method returns an error if the connection attempt fails.
-    pub fn connect(addr: SocketAddr) -> Result<TimestampedTcpSocket, CommonError> {
-        let socket_fd = match addr {
-            SocketAddr::V4(_) => unsafe { libc::socket(libc::AF_INET, libc::SOCK_STREAM, 0) },
-            SocketAddr::V6(_) => unsafe { libc::socket(libc::AF_INET6, libc::SOCK_STREAM, 0) },
-        };
-
+    pub fn connect(&mut self, addr: SocketAddr) -> Result<i32, CommonError> {
+        let socket_fd = self.inner;
         if socket_fd < 0 {
             return Err(CommonError::SocketCreateFailed(io::Error::last_os_error()));
         }
@@ -235,7 +231,7 @@ impl TimestampedTcpSocket {
                 unsafe {
                     (*sockaddr).sin_family = libc::AF_INET as libc::sa_family_t;
                     (*sockaddr).sin_port = a.port().to_be();
-                    (*sockaddr).sin_addr.s_addr = u32::from_be_bytes(a.ip().octets());
+                    (*sockaddr).sin_addr.s_addr = u32::from_le_bytes(a.ip().octets());
                 }
                 (
                     sockaddr as *const libc::sockaddr,
@@ -260,15 +256,16 @@ impl TimestampedTcpSocket {
                 )
             }
         };
-        let result = unsafe { libc::connect(socket_fd, sock_addr, sock_addr_len) };
 
+        let result = unsafe { libc::connect(socket_fd, sock_addr, sock_addr_len) };
+        log::debug!("Connect result: {}", result);
         if result < 0 {
             let err = io::Error::last_os_error();
             unsafe { libc::close(socket_fd) };
             return Err(CommonError::SocketConnectFailed(err));
         }
 
-        Ok(TimestampedTcpSocket { inner: socket_fd })
+        Ok(result)
     }
 }
 
@@ -277,7 +274,7 @@ impl Socket<TimestampedTcpSocket> for TimestampedTcpSocket {
         Self { inner: fd }
     }
 
-    fn send(&self, message: impl BeBytes) -> Result<(usize, DateTime), CommonError> {
+    fn send(&self, message: impl BeBytes) -> Result<(isize, DateTime), CommonError> {
         // Convert the message to a byte array
         let bytes = message.to_be_bytes();
 
@@ -300,19 +297,19 @@ impl Socket<TimestampedTcpSocket> for TimestampedTcpSocket {
         }
 
         // Return the number of bytes sent and the timestamp
-        Ok((result as usize, timestamp))
+        Ok((result, timestamp))
     }
 
     fn send_to(
         &self,
         _address: &SocketAddr,
         message: impl BeBytes,
-    ) -> Result<(usize, crate::time::DateTime), CommonError> {
+    ) -> Result<(isize, crate::time::DateTime), CommonError> {
         // Use the send method to send the data
         self.send(message)
     }
 
-    fn receive(&self, buffer: &mut [u8]) -> Result<(usize, DateTime), CommonError> {
+    fn receive(&self, buffer: &mut [u8]) -> Result<(isize, DateTime), CommonError> {
         // Get the current timestamp
         let timestamp = DateTime::utc_now();
 
@@ -333,13 +330,13 @@ impl Socket<TimestampedTcpSocket> for TimestampedTcpSocket {
         }
 
         // Return the number of bytes received and the timestamp
-        Ok((result as usize, timestamp))
+        Ok((result, timestamp))
     }
 
     fn receive_from(
         &self,
         buffer: &mut [u8],
-    ) -> Result<(usize, SocketAddr, DateTime), CommonError> {
+    ) -> Result<(isize, SocketAddr, DateTime), CommonError> {
         let (result, timestamp) = self.receive(buffer)?;
 
         let mut addr_storage: libc::sockaddr_storage = unsafe { std::mem::zeroed() };

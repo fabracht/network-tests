@@ -5,8 +5,11 @@ use std::{
         fd::{AsRawFd, FromRawFd, RawFd},
         unix::net::UnixDatagram,
     },
-    sync::{atomic::AtomicUsize, mpsc, Arc, RwLock},
-    time::Duration,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        mpsc, Arc, Mutex, RwLock,
+    },
+    thread::Thread,
 };
 
 use crate::{
@@ -17,9 +20,16 @@ use crate::{
     libc_call,
 };
 
-pub enum EventLoopMessages<T: Send> {
-    Register(T),
+pub enum EventLoopMessages<T: Send, U: Send> {
+    AddDuration(Itimerspec),
+    RegisterTimed((Itimerspec, Token, U)),
+    Register(Source<T>),
     Unregister(Token),
+    Clean,
+    TimedCleanup {
+        timer_spec: Itimerspec,
+        thread: Thread,
+    },
 }
 
 /// Event loop specifically tailored for Linux environments.
@@ -37,12 +47,14 @@ pub struct LinuxEventLoop<T: AsRawFd + Send> {
     /// A mapping from tokens to registered timed sources.
     timed_sources: Arc<RwLock<HashMap<Token, TimedSource<T>>>>,
     next_token: AtomicUsize,
-    registration_sender: mpsc::Sender<EventLoopMessages<Source<T>>>,
-    registration_receiver: mpsc::Receiver<EventLoopMessages<Source<T>>>,
+    registration_sender: Arc<Mutex<DuplexChannel<T>>>,
+    registration_receiver: mpsc::Receiver<EventLoopMessages<T, CallBack<T>>>,
     /// Optional timer specification for an overtime period.
     /// The overtime period removes all timed events, but keeps
     /// listening for readable events
     overtime: Option<Itimerspec>,
+    cleanup: Option<Itimerspec>,
+    cleanup_token: Option<Token>,
 }
 
 impl<T: AsRawFd + Send> LinuxEventLoop<T> {
@@ -51,7 +63,7 @@ impl<T: AsRawFd + Send> LinuxEventLoop<T> {
     /// # Returns
     ///
     /// A clone of the `mpsc::Sender` used by the event loop.
-    pub fn get_communication_channel(&self) -> mpsc::Sender<EventLoopMessages<Source<T>>> {
+    pub fn get_communication_channel(&self) -> Arc<Mutex<DuplexChannel<T>>> {
         self.registration_sender.clone()
     }
 
@@ -72,15 +84,21 @@ impl<T: AsRawFd + Send + 'static> EventLoopTrait<T> for LinuxEventLoop<T> {
         let events = Events::with_capacity(event_capacity);
 
         let (registration_sender, registration_receiver) = mpsc::channel();
+        let duplex_channel = DuplexChannel::new(registration_sender);
         Ok(Self {
             poll,
             events,
             sources: Arc::new(RwLock::new(HashMap::new())),
             timed_sources: Arc::new(RwLock::new(HashMap::new())),
             next_token: AtomicUsize::new(0),
-            registration_sender,
+            registration_sender: Arc::new(Mutex::new(duplex_channel)),
             registration_receiver,
-            overtime: None,
+            overtime: Some(Itimerspec {
+                it_interval: core::time::Duration::ZERO,
+                it_value: core::time::Duration::from_secs(1),
+            }),
+            cleanup: None,
+            cleanup_token: None,
         })
     }
 
@@ -98,10 +116,39 @@ impl<T: AsRawFd + Send + 'static> EventLoopTrait<T> for LinuxEventLoop<T> {
             while let Ok(message) = self.registration_receiver.try_recv() {
                 match message {
                     EventLoopMessages::Register((event_source, callback)) => {
-                        let _inner_token = self.register_event_source(event_source, callback)?;
+                        let token = self.register_event_source(event_source, callback)?;
+                        self.registration_sender.try_lock()?.set_token(token.0);
+                        log::debug!("Registering event source with token {}", token.0);
                     }
                     EventLoopMessages::Unregister(token) => {
                         self.unregister_event_source(token)?;
+                    }
+                    EventLoopMessages::RegisterTimed((time_spec, token, callback)) => {
+                        log::debug!("Registering timedevent source");
+                        let timer_token = self.register_timer(&time_spec, &token, callback)?;
+                        self.registration_sender
+                            .try_lock()?
+                            .set_token(timer_token.0);
+                    }
+                    EventLoopMessages::Clean => {
+                        // Unregister all event sources, we do this by closing all file descriptors from the sources and timedsources
+                        // the poll is responsible for cleaning up closed Fds
+                        self.sources
+                            .try_read()?
+                            .iter()
+                            .for_each(|(_, (source, _))| unsafe {
+                                let _ = libc::close(source.as_raw_fd());
+                            })
+                    }
+                    EventLoopMessages::AddDuration(time_spec) => {
+                        let token = self.add_duration(&time_spec)?;
+                        self.registration_sender.try_lock()?.set_token(token.0);
+                    }
+                    EventLoopMessages::TimedCleanup { timer_spec, thread } => {
+                        log::debug!("Adding cleanup timer");
+                        let token = self.add_cleanup(&timer_spec)?;
+                        self.registration_sender.try_lock()?.set_token(token.0);
+                        thread.unpark();
                     }
                 }
             }
@@ -125,33 +172,45 @@ impl<T: AsRawFd + Send + 'static> EventLoopTrait<T> for LinuxEventLoop<T> {
                                             "An error {:?} has occurred. Closing source",
                                             e
                                         );
-                                        let _ = self.unregister_timed_event_source(generate_token);
+                                        drop(sources);
+                                        let _ = self.unregister_event_source(generate_token);
                                     }
                                 }
                             } else if let Some((timer_source, inner_token, callback)) =
                                 timed_sources.get_mut(&generate_token)
                             {
+                                log::trace!("Timer event with token {:?}", inner_token);
                                 if let Some((source, _)) = sources.get_mut(inner_token) {
                                     callback(source, *inner_token)?;
                                     reset_timer(timer_source)?;
                                 }
                             } else {
-                                // else only triggers on duration and overtime
+                                // else only triggers on ungeristered timed events such as TimedCleanup, Overtime and Duration
                                 if self.overtime.is_none() {
                                     log::debug!("No overtime");
-                                    break 'outer;
+                                    if self.cleanup.is_none() {
+                                        break 'outer;
+                                    } else if let Some(cleanup_token) = self.cleanup_token {
+                                        drop(timed_sources);
+                                        self.unregister_timed_event_source(cleanup_token)?;
+                                        self.cleanup_token = None;
+                                        continue 'outer;
+                                    }
                                 }
-                                timed_sources.iter().for_each(|(token, _)| {
-                                    let _ = self.unregister_timed_event_source(Token(token.0));
-                                });
-                                log::debug!("Entering Overtime {:?}", self.overtime);
-                                let _ =
-                                    self.add_duration(&self.overtime.unwrap_or(Itimerspec {
-                                        it_interval: Duration::from_millis(500),
-                                        it_value: Duration::ZERO,
-                                    }))?;
 
-                                self.overtime = None;
+                                let tokens: Vec<Token> = timed_sources
+                                    .iter()
+                                    .map(|(token, _)| token.clone())
+                                    .collect();
+                                drop(timed_sources);
+                                // Unregister all timed events
+                                tokens.iter().for_each(|token| {
+                                    let _ = self.unregister_timed_event_source(*token);
+                                });
+
+                                log::debug!("Entering Overtime {:?}", self.overtime);
+                                let overtime = self.overtime.take().expect("No overtime");
+                                self.cleanup_token = Some(self.add_duration(&overtime)?);
                             }
                         }
                     }
@@ -159,7 +218,7 @@ impl<T: AsRawFd + Send + 'static> EventLoopTrait<T> for LinuxEventLoop<T> {
             }
             // Check if there are any sources with closed file descriptors and deregister them
             let sources_clone = self.sources.clone();
-            let sources_reference = sources_clone.try_read().unwrap();
+            let sources_reference = sources_clone.try_read()?;
             let dead_tokens = sources_reference.iter().filter_map(|(token, (source, _))| {
                 let fd = source.as_raw_fd();
 
@@ -177,8 +236,8 @@ impl<T: AsRawFd + Send + 'static> EventLoopTrait<T> for LinuxEventLoop<T> {
         Ok(())
     }
 
-    fn add_timer(
-        &mut self,
+    fn register_timer(
+        &self,
         time_spec: &Itimerspec,
         token: &Token,
         callback: CallBack<T>,
@@ -190,18 +249,18 @@ impl<T: AsRawFd + Send + 'static> EventLoopTrait<T> for LinuxEventLoop<T> {
             libc::timerfd_settime(fd, 0, &itimer_spec, std::ptr::null_mut());
             fd
         };
+
         let mut timer_source = SourceFd(&timer_fd);
         let new_token = self.generate_token();
         let mio_token = mio::Token(new_token.0);
         self.poll
             .registry()
             .register(&mut timer_source, mio_token, Interest::READABLE)?;
-        if let Some((_source, _)) = self.sources.try_write().unwrap().get_mut(token) {
+        if let Some((_source, _)) = self.sources.try_write()?.get_mut(token) {
             self.timed_sources
                 .try_write()?
                 .insert(new_token, (timer_fd, *token, Box::new(callback)));
         }
-
         Ok(new_token)
     }
 
@@ -224,7 +283,7 @@ impl<T: AsRawFd + Send + 'static> EventLoopTrait<T> for LinuxEventLoop<T> {
     }
 
     fn register_event_source(
-        &mut self,
+        &self,
         event_source: T,
         callback: CallBack<T>,
     ) -> Result<Token, CommonError> {
@@ -242,7 +301,7 @@ impl<T: AsRawFd + Send + 'static> EventLoopTrait<T> for LinuxEventLoop<T> {
         Ok(generate_token)
     }
 
-    fn unregister_event_source(&mut self, token: Token) -> Result<(), CommonError> {
+    fn unregister_event_source(&self, token: Token) -> Result<(), CommonError> {
         if let Ok(mut sources) = self.sources.try_write() {
             if let Some((event_source, _)) = sources.remove(&token) {
                 let raw_fd = &event_source.as_raw_fd();
@@ -263,14 +322,17 @@ impl<T: AsRawFd + Send + 'static> EventLoopTrait<T> for LinuxEventLoop<T> {
     }
 
     fn unregister_timed_event_source(&self, token: Token) -> Result<(), CommonError> {
-        if let Some((timer_fd, _event_token, _)) = self.timed_sources.try_read()?.get(&token) {
+        if let Some((timer_fd, _event_token, _)) = self.timed_sources.try_write()?.remove(&token) {
+            log::debug!("Unregistering timed event with token {:?}", token);
             // Unregister timer_fd
-            let mut timer_source = SourceFd(timer_fd);
+            let mut timer_source = SourceFd(&timer_fd);
             self.poll
                 .registry()
                 .deregister(&mut timer_source)
                 .map_err(|e| {
-                    CommonError::from(format!("Failed to deregister timed event source: {}", e))
+                    let error_message = format!("Failed to deregister timed event source: {}", e);
+                    log::error!("{}", error_message);
+                    CommonError::from(error_message)
                 })?;
         } else {
             return Err(CommonError::from(
@@ -278,6 +340,27 @@ impl<T: AsRawFd + Send + 'static> EventLoopTrait<T> for LinuxEventLoop<T> {
             ));
         }
         Ok(())
+    }
+
+    fn add_cleanup(&mut self, time_spec: &Itimerspec) -> Result<Token, CommonError> {
+        self.cleanup = Some(time_spec.to_owned());
+        let timer_fd = unsafe {
+            let fd = libc::timerfd_create(libc::CLOCK_REALTIME, libc::TFD_NONBLOCK);
+            let itimer_spec = itimerspec_to_libc(time_spec);
+            let res = libc::timerfd_settime(fd, 0, &itimer_spec, std::ptr::null_mut());
+            log::debug!("Timerfd settime result: {}", res);
+            fd
+        };
+
+        let mut timer_source = SourceFd(&timer_fd);
+        let new_token = self.generate_token();
+        let mio_token = mio::Token(new_token.0);
+        self.poll
+            .registry()
+            .register(&mut timer_source, mio_token, Interest::READABLE)?;
+        log::debug!("Registered cleanup");
+        self.cleanup_token = Some(new_token);
+        Ok(new_token)
     }
 }
 
@@ -346,4 +429,77 @@ fn is_fd_open<T: AsRawFd>(file: &T) -> bool {
     let fd = file.as_raw_fd();
     let res = unsafe { libc::fcntl(fd, libc::F_GETFD) };
     unsafe { !(res == -1 && *libc::__errno_location() == libc::EBADF) }
+}
+
+pub struct DuplexChannel<T>
+where
+    T: Send,           // Ensure T is Send
+    CallBack<T>: Send, // Ensure Callback<T> is Send
+{
+    sender: mpsc::Sender<EventLoopMessages<T, CallBack<T>>>,
+    token: Arc<AtomicUsize>, // Stores the inner value of Token(usize)
+    error: Arc<Mutex<Option<CommonError>>>, // For storing error state
+}
+
+impl<T> Clone for DuplexChannel<T>
+where
+    T: Send,
+    CallBack<T>: Send,
+{
+    fn clone(&self) -> Self {
+        DuplexChannel {
+            sender: self.sender.clone(),
+            token: self.token.clone(),
+            error: self.error.clone(),
+        }
+    }
+}
+
+impl<T> DuplexChannel<T>
+where
+    T: Send,
+    CallBack<T>: Send,
+{
+    // Initialize the DuplexChannel
+    pub fn new(sender: mpsc::Sender<EventLoopMessages<T, CallBack<T>>>) -> Self {
+        DuplexChannel {
+            sender,
+            token: Arc::new(AtomicUsize::new(usize::MAX)), // Invalid token state
+            error: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    // Send a message to the event loop
+    pub fn send(&self, message: EventLoopMessages<T, CallBack<T>>) -> Result<(), CommonError> {
+        self.sender.send(message).map_err(CommonError::from)
+    }
+
+    // Called by event loop to set the token value
+    pub fn set_token(&self, token_value: usize) {
+        self.token.store(token_value, Ordering::SeqCst);
+    }
+
+    // Retrieve the token, if available
+    pub fn get_token(&self) -> Result<Token, CommonError> {
+        let token_value = self.token.load(Ordering::SeqCst);
+        if token_value != usize::MAX {
+            // Check if token is valid
+            let token = Token(token_value);
+            Ok(token)
+        } else {
+            // Retrieve and clear error state
+            let mut lock = self.error.lock().unwrap();
+            if let Some(err) = lock.take() {
+                Err(err)
+            } else {
+                Err(CommonError::Generic("Invalid token".to_string()))
+            }
+        }
+    }
+
+    // Update error state
+    pub fn set_error(&self, error: CommonError) {
+        let mut lock = self.error.lock().unwrap();
+        *lock = Some(error);
+    }
 }

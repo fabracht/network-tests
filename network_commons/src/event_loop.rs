@@ -2,8 +2,9 @@ use crate::error::CommonError;
 use core::time::Duration;
 use std::os::fd::{AsRawFd, RawFd};
 
-pub type CallBack<T> = Box<dyn FnMut(&mut T, Token) -> Result<i32, CommonError> + Send + 'static>;
+pub type CallBack<T> = Box<dyn FnMut(&mut T, Token) -> Result<isize, CommonError> + Send + 'static>;
 pub type Source<T> = (T, CallBack<T>);
+pub type SourceCollection<T> = (T, Vec<CallBack<T>>);
 pub type TimedSource<T> = (RawFd, Token, CallBack<T>);
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -61,7 +62,7 @@ pub trait EventLoopTrait<T: AsRawFd> {
     /// # Errors
     /// Returns `CommonError` if the registration fails.
     fn register_event_source(
-        &mut self,
+        &self,
         event_source: T,
         callback: CallBack<T>,
     ) -> Result<Token, CommonError>;
@@ -71,7 +72,7 @@ pub trait EventLoopTrait<T: AsRawFd> {
     ///
     /// # Errors
     /// Returns `CommonError` if the unregistration fails.
-    fn unregister_event_source(&mut self, token: Token) -> Result<(), CommonError>;
+    fn unregister_event_source(&self, token: Token) -> Result<(), CommonError>;
 
     /// Unregisters a timed event source from the event loop.
     ///
@@ -97,6 +98,14 @@ pub trait EventLoopTrait<T: AsRawFd> {
     /// Returns `CommonError` if adding the timed event fails.
     fn add_duration(&self, time_spec: &Itimerspec) -> Result<Token, CommonError>;
 
+    /// Adds a timed event that clears all registered events to the event loop.
+    ///
+    /// The `time_spec` specifies when the event should be triggered.
+    ///
+    /// # Errors
+    /// Returns `CommonError` if adding the timed event fails.
+    fn add_cleanup(&mut self, time_spec: &Itimerspec) -> Result<Token, CommonError>;
+
     /// Adds a timer to the event loop.
     ///
     /// The `time_spec` specifies when the timer should be triggered.
@@ -105,8 +114,8 @@ pub trait EventLoopTrait<T: AsRawFd> {
     ///
     /// # Errors
     /// Returns `CommonError` if adding the timer fails.
-    fn add_timer(
-        &mut self,
+    fn register_timer(
+        &self,
         time_spec: &Itimerspec,
         token: &Token,
         callback: CallBack<T>,
