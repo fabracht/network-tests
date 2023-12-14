@@ -499,7 +499,7 @@ impl Socket<TimestampedUdpSocket> for TimestampedUdpSocket {
                 result = unsafe { sendmsg(fd, &msg, 0) };
             }
         }
-        Ok((result as isize, utc_now))
+        Ok((result, utc_now))
     }
 
     fn receive(&self, _buffer: &mut [u8]) -> Result<(isize, DateTime), CommonError> {

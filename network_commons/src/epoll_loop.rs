@@ -198,10 +198,8 @@ impl<T: AsRawFd + Send + 'static> EventLoopTrait<T> for LinuxEventLoop<T> {
                                     }
                                 }
 
-                                let tokens: Vec<Token> = timed_sources
-                                    .iter()
-                                    .map(|(token, _)| token.clone())
-                                    .collect();
+                                let tokens: Vec<Token> =
+                                    timed_sources.iter().map(|(token, _)| *token).collect();
                                 drop(timed_sources);
                                 // Unregister all timed events
                                 tokens.iter().for_each(|token| {
