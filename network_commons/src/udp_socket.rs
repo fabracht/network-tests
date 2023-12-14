@@ -588,7 +588,7 @@ struct Message {
 #[test]
 fn test_udp_socket_send_receive_address_parsing() {
     // Bind the receiver to a specific address and port
-    let receiver_addr: SocketAddr = "10.211.55.9:12345".parse().unwrap();
+    let receiver_addr: SocketAddr = "127.0.0.1:12345".parse().unwrap();
     let receiver_socket = TimestampedUdpSocket::bind(&receiver_addr).unwrap();
 
     // Bind the sender to a different specific address and port
