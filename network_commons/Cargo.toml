@@ -1,6 +1,6 @@
 [package]
 name = "network_commons"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2021"
 description = "Low level code for the server and client applications"
 license = "MIT"
