@@ -2,9 +2,9 @@ version: "3.9"
 
 services:
   network-tests:
-    container_name: network-tests
+    container_name: twamp-distroless
     build:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "44571:44571/udp"
+      - "45571:45571/udp"

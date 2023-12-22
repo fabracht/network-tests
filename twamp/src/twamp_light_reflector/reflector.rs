@@ -128,7 +128,7 @@ pub fn rx_callback(
     move |inner_socket: &mut TimestampedUdpSocket, _| {
         let buffer = &mut [0; 1 << 16];
         let (result, socket_address, timestamp) = inner_socket.receive_from(buffer)?;
-        log::info!("Received {} bytes from {}", result, socket_address);
+        log::debug!("Received {} bytes from {}", result, socket_address);
         let (twamp_test_message, _bytes_written): (SenderMessage, usize) =
             SenderMessage::try_from_be_bytes(&buffer[..result.max(0) as usize])?;
         let mut sessions_lock = sessions.write()?;

@@ -127,11 +127,11 @@ impl Strategy<TwampResult, CommonError> for SessionSender {
 
         // Add a deadline event
         let _termination_token = event_loop.add_duration(&duration_spec)?;
-        log::info!("Starting test");
+        log::debug!("Starting test");
         // Run the event loop
         event_loop.run()?;
-        log::info!("Test finished");
-        log::info!("Calculating results");
+        log::debug!("Test finished");
+        log::debug!("Calculating results");
         let session_results = calculate_session_results(rc_sessions)?;
         let test_result = TwampResult {
             session_results,
@@ -312,13 +312,11 @@ pub fn create_tx_callback(
                 vec![0u8; MIN_UNAUTH_PADDING + padding],
             );
 
-            log::warn!("Sending to {}", session.tx_socket_address);
             if let Ok((sent, timestamp)) =
                 inner_socket.send_to(&session.tx_socket_address, twamp_test_message)
             {
                 sent_bytes.push(sent);
                 timestamps.push(timestamp);
-                log::error!("Timestamps {:?}", timestamps);
             }
         });
 
@@ -346,7 +344,7 @@ pub fn create_tx_correct_callback(
         let mut tx_timestamps = vec![];
 
         while let Ok(error_messages) = inner_socket.receive_errors() {
-            // log::warn!("Received error messages {}", error_messages.len());
+            // log::debug!("Received error messages {}", error_messages.len());
             error_messages
                 .iter()
                 .for_each(|(_res, _address, tx_timestamp)| {
@@ -377,16 +375,16 @@ pub fn create_rx_callback(
     move |inner_socket, _| {
         let buffers = &mut [[0u8; 1024]; BUFFER_LENGTH];
         while let Ok(response_vec) = inner_socket.receive_from_multiple(buffers, BUFFER_LENGTH) {
-            log::error!("Received {} responses", response_vec.len());
+            log::debug!("Received {} responses", response_vec.len());
             response_vec.iter().enumerate().for_each(
                 |(i, (result, socket_address, timespec_ref))| {
                     let received_bytes = &buffers[i][..*result];
                     let twamp_test_message: &Result<(ReflectedMessage, usize), CommonError> =
                         &ReflectedMessage::try_from_be_bytes(received_bytes).map_err(|e| e.into());
-                    log::warn!("Twamp Response Message {:?}", twamp_test_message);
+                    log::debug!("Twamp Response Message {:?}", twamp_test_message);
                     if let Ok(twamp_message) = twamp_test_message {
                         if let Ok(rw_lock_write_guard) = &rx_sessions.try_write() {
-                            log::info!(
+                            log::debug!(
                                 "Obtained write lock, looking for session {}",
                                 socket_address
                             );
@@ -395,7 +393,7 @@ pub fn create_rx_callback(
                                 .iter()
                                 .find(|session| session.tx_socket_address == *socket_address);
                             if let Some(session) = session_option {
-                                log::info!("Received from session {}", session.tx_socket_address);
+                                log::debug!("Received from session {}", session.tx_socket_address);
                                 let _ = session.add_to_received(
                                     twamp_message.0.to_owned(),
                                     DateTime::from_timespec(*timespec_ref),
@@ -405,7 +403,7 @@ pub fn create_rx_callback(
                                 if let Ok(json_result) =
                                     serde_json::to_string_pretty(&latest_result)
                                 {
-                                    log::info!("Latest {}", json_result);
+                                    log::debug!("Latest {}", json_result);
                                 }
                             }
                         }
