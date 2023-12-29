@@ -123,7 +123,7 @@ impl Session {
 
         // Check if the first packet is lost and increment the total_loss counter accordingly
         if results
-            .get(0)
+            .first()
             .map(|p| p.reflector_seq.is_none())
             .unwrap_or(false)
         {

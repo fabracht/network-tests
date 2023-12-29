@@ -18,7 +18,7 @@ serde_json = "1.0"
 thiserror = "1.0"
 validator = { version = "0.16", features = ["derive"] }
 network_commons = "0.5"
-bebytes = "0.1"
+bebytes = "0.2"
 
 [dev-dependencies]
 log4rs = "1.2.0"

@@ -15,4 +15,4 @@ serde_yaml = "0.9"
 serde_json = "1.0"
 thiserror = "1.0"
 validator = { version = "0.16", features = ["derive"] }
-bebytes = "0.1"
+bebytes = "0.2"
