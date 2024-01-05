@@ -5,7 +5,7 @@ use network_commons::{
     error::CommonError,
     event_loop::{EventLoopTrait, Itimerspec, Token},
     socket::Socket,
-    time::{DateTime, NtpTimestamp},
+    time::NtpTimestamp,
     udp_socket::TimestampedUdpSocket,
     Strategy,
 };
@@ -22,7 +22,6 @@ use core::time::Duration;
 use std::{
     borrow::BorrowMut,
     net::SocketAddr,
-    os::fd::IntoRawFd,
     sync::{atomic::Ordering, Arc, RwLock},
 };
 
@@ -59,12 +58,11 @@ impl SessionSender {
     }
 
     pub fn create_udp_socket(&mut self) -> Result<TimestampedUdpSocket, CommonError> {
-        let socket = mio::net::UdpSocket::bind(self.source_ip_address)?;
-        let mut my_socket = TimestampedUdpSocket::new(socket.into_raw_fd());
+        let mut my_socket = TimestampedUdpSocket::bind(&self.source_ip_address)?;
 
         my_socket.set_fcntl_options()?;
         my_socket.set_socket_options(libc::SOL_IP, libc::IP_RECVERR, Some(1))?;
-        my_socket.set_socket_options(libc::IPPROTO_IP, libc::IP_TOS, Some(16))?;
+        my_socket.set_socket_options(libc::IPPROTO_IP, libc::IP_TOS, Some(1))?;
 
         my_socket.set_timestamping_options()?;
 
@@ -109,16 +107,16 @@ impl Strategy<TwampResult, CommonError> for SessionSender {
 
         // // This configures the tx timestamp correction socket timer.
         let tx_correction_timer_spec = Itimerspec {
-            it_interval: Duration::from_millis(50),
+            it_interval: Duration::from_millis(150),
             it_value: Duration::from_nanos(1),
         };
 
-        let _tx_token = event_loop.register_timer(
+        let tx_correct_token = event_loop.register_timer(
             &tx_correction_timer_spec,
             &rx_token,
             Box::new(create_tx_correct_callback(rc_sessions.clone())),
         )?;
-
+        event_loop.add_overtime_exception(tx_correct_token);
         // Create the deadline event
         let duration_spec = Itimerspec {
             it_interval: Duration::ZERO,
@@ -312,13 +310,20 @@ pub fn create_tx_callback(
                 vec![0u8; MIN_UNAUTH_PADDING + padding],
             );
 
-            log::warn!("Sending to {}", session.tx_socket_address);
+            log::trace!("Sending to {}", session.tx_socket_address);
             if let Ok((sent, timestamp)) =
                 inner_socket.send_to(&session.tx_socket_address, twamp_test_message)
             {
                 sent_bytes.push(sent);
                 timestamps.push(timestamp);
-                log::error!("Timestamps {:?}", timestamps);
+                log::trace!("Timestamps {:?}", timestamps);
+            } else {
+                let error = std::io::Error::last_os_error();
+                log::error!(
+                    "Error {:#?} sending to {}",
+                    error,
+                    session.tx_socket_address
+                );
             }
         });
 
@@ -344,14 +349,18 @@ pub fn create_tx_correct_callback(
 ) -> impl Fn(&mut TimestampedUdpSocket, Token) -> Result<isize, CommonError> {
     move |inner_socket: &mut TimestampedUdpSocket, _| {
         let mut tx_timestamps = vec![];
-
-        while let Ok(error_messages) = inner_socket.receive_errors() {
-            // log::warn!("Received error messages {}", error_messages.len());
-            error_messages
-                .iter()
-                .for_each(|(_res, _address, tx_timestamp)| {
-                    tx_timestamps.push(tx_timestamp.to_owned());
-                });
+        let addresses_lock = tx_sessions.try_read()?;
+        let mut addresses: Vec<SocketAddr> = addresses_lock
+            .iter()
+            .map(|session| session.tx_socket_address)
+            .collect();
+        drop(addresses_lock);
+        while let Ok(error_messages) = inner_socket.retrieve_tx_timestamps(&mut addresses) {
+            log::trace!("Received error messages {}", error_messages.len());
+            error_messages.iter().for_each(|tx_timestamp| {
+                log::trace!("Received timestamp {:?}", tx_timestamp);
+                tx_timestamps.push(tx_timestamp.to_owned());
+            });
         }
         let mut write_lock = tx_sessions.try_write()?;
         let length = write_lock.len();
@@ -375,18 +384,20 @@ pub fn create_rx_callback(
     rx_sessions: Arc<RwLock<Vec<Session>>>,
 ) -> impl Fn(&mut TimestampedUdpSocket, Token) -> Result<isize, CommonError> {
     move |inner_socket, _| {
-        let buffers = &mut [[0u8; 1024]; BUFFER_LENGTH];
+        let buffers = &mut [[0u8; 4096]; BUFFER_LENGTH];
         while let Ok(response_vec) = inner_socket.receive_from_multiple(buffers, BUFFER_LENGTH) {
-            log::error!("Received {} responses", response_vec.len());
-            response_vec.iter().enumerate().for_each(
-                |(i, (result, socket_address, timespec_ref))| {
+            log::trace!("Received {} responses", response_vec.len());
+            response_vec
+                .iter()
+                .enumerate()
+                .for_each(|(i, (result, socket_address, datetime))| {
                     let received_bytes = &buffers[i][..*result];
                     let twamp_test_message: &Result<(ReflectedMessage, usize), CommonError> =
                         &ReflectedMessage::try_from_be_bytes(received_bytes).map_err(|e| e.into());
-                    log::warn!("Twamp Response Message {:?}", twamp_test_message);
+                    log::trace!("Twamp Response Message {:?}", twamp_test_message);
                     if let Ok(twamp_message) = twamp_test_message {
                         if let Ok(rw_lock_write_guard) = &rx_sessions.try_write() {
-                            log::info!(
+                            log::trace!(
                                 "Obtained write lock, looking for session {}",
                                 socket_address
                             );
@@ -395,23 +406,20 @@ pub fn create_rx_callback(
                                 .iter()
                                 .find(|session| session.tx_socket_address == *socket_address);
                             if let Some(session) = session_option {
-                                log::info!("Received from session {}", session.tx_socket_address);
-                                let _ = session.add_to_received(
-                                    twamp_message.0.to_owned(),
-                                    DateTime::from_timespec(*timespec_ref),
-                                );
-                                let latest_result = session.get_latest_result();
+                                log::trace!("Received from session {}", session.tx_socket_address);
+                                let _ =
+                                    session.add_to_received(twamp_message.0.to_owned(), *datetime);
+                                // let latest_result = session.get_latest_result();
 
-                                if let Ok(json_result) =
-                                    serde_json::to_string_pretty(&latest_result)
-                                {
-                                    log::info!("Latest {}", json_result);
-                                }
+                                // if let Ok(json_result) =
+                                //     serde_json::to_string_pretty(&latest_result)
+                                // {
+                                //     log::trace!("Latest {}", json_result);
+                                // }
                             }
                         }
                     }
-                },
-            );
+                });
         }
         Ok(0)
     }
