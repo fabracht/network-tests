@@ -4,7 +4,7 @@
   ],
   "mode": "LIGHT_SENDER",
   "source_ip_address": "127.0.0.1:45573",
-  "collection_period": 2,
+  "collection_period": 1,
   "packet_interval": 150,
   "padding": 41,
   "ref_wait": 1,

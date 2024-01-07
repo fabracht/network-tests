@@ -111,8 +111,6 @@ impl TimestampedUdpSocket {
         num_messages: usize,
     ) -> Result<Vec<(usize, SocketAddr, DateTime)>, CommonError> {
         let fd = self.as_raw_fd();
-        // let mut addresses =
-        // vec![SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0); num_messages];
         let mut addr_storage: Vec<sockaddr_storage> =
             vec![unsafe { std::mem::zeroed() }; num_messages];
         let mut msg_hdrs: Vec<mmsghdr> = Vec::new();
@@ -137,26 +135,12 @@ impl TimestampedUdpSocket {
             });
         }
 
-        let mut timeout = timespec {
-            tv_sec: 0,
-            tv_nsec: 1000000, // 1ms
+        let (mut timestamp, result) = match recvmmsg_timestamped(fd, &mut msg_hdrs, num_messages) {
+            Ok(value) => value,
+            Err(value) => return value,
         };
-        let mut timestamp = DateTime::utc_now();
-        let result = unsafe {
-            libc::recvmmsg(
-                fd,
-                msg_hdrs.as_mut_ptr(),
-                num_messages as u32,
-                0,
-                &mut timeout as *mut timespec, // wait for 1ms
-            )
-        };
-        if result < 0 {
-            let last_os_error = io::Error::last_os_error();
-            return Err(last_os_error.into());
-        }
-        let mut received_data = Vec::new();
 
+        let mut received_data = Vec::new();
         for i in 0..result as usize {
             // let socket_addr = addresses[i];
             let socket_addr = storage_to_socket_addr(&addr_storage[i])?;
@@ -250,6 +234,32 @@ impl TimestampedUdpSocket {
     }
 }
 
+fn recvmmsg_timestamped(
+    fd: i32,
+    msg_hdrs: &mut Vec<mmsghdr>,
+    num_messages: usize,
+) -> Result<(DateTime, i32), Result<Vec<(usize, SocketAddr, DateTime)>, CommonError>> {
+    let mut timeout = timespec {
+        tv_sec: 0,
+        tv_nsec: 100000, // 100us
+    };
+    let timestamp = DateTime::utc_now();
+    let result = unsafe {
+        libc::recvmmsg(
+            fd,
+            msg_hdrs.as_mut_ptr(),
+            num_messages as u32,
+            0,
+            &mut timeout as *mut timespec, // wait for 1ms
+        )
+    };
+    if result < 0 {
+        let last_os_error = io::Error::last_os_error();
+        return Err(Err(last_os_error.into()));
+    }
+    Ok((timestamp, result))
+}
+
 /// Implementation of the `Socket` trait for `TimestampedUdpSocket`.
 impl Socket<TimestampedUdpSocket> for TimestampedUdpSocket {
     unsafe fn from_raw_fd(fd: RawFd) -> TimestampedUdpSocket {
@@ -324,25 +334,28 @@ impl Socket<TimestampedUdpSocket> for TimestampedUdpSocket {
             return Err(CommonError::Io(std::io::Error::last_os_error()));
         }
 
-        let socket_addr = match addr_storage.ss_family as i32 {
-            libc::AF_INET => {
-                let sockaddr: &libc::sockaddr_in = unsafe { core::mem::transmute(&addr_storage) };
-                SocketAddr::new(
-                    IpAddr::V4(Ipv4Addr::from(sockaddr.sin_addr.s_addr.to_be())),
-                    sockaddr.sin_port.to_be(),
-                )
-            }
-            libc::AF_INET6 => {
-                let sockaddr: &libc::sockaddr_in6 = unsafe { core::mem::transmute(&addr_storage) };
-                SocketAddr::new(
-                    IpAddr::V6(Ipv6Addr::from(sockaddr.sin6_addr.s6_addr)),
-                    sockaddr.sin6_port.to_be(),
-                )
-            }
-            _ => return Err(CommonError::UnknownAddressFamily),
-        };
+        // let socket_addr = match addr_storage.ss_family as i32 {
+        //     libc::AF_INET => {
+        //         let sockaddr: &libc::sockaddr_in = unsafe { core::mem::transmute(&addr_storage) };
+        //         SocketAddr::new(
+        //             IpAddr::V4(Ipv4Addr::from(sockaddr.sin_addr.s_addr.to_be())),
+        //             sockaddr.sin_port.to_be(),
+        //         )
+        //     }
+        //     libc::AF_INET6 => {
+        //         let sockaddr: &libc::sockaddr_in6 = unsafe { core::mem::transmute(&addr_storage) };
+        //         SocketAddr::new(
+        //             IpAddr::V6(Ipv6Addr::from(sockaddr.sin6_addr.s6_addr)),
+        //             sockaddr.sin6_port.to_be(),
+        //         )
+        //     }
+        //     _ => return Err(CommonError::UnknownAddressFamily),
+        // };
+        let socket_addr = storage_to_socket_addr(unsafe { core::mem::transmute(msg.msg_name) })?;
+        log::warn!("Socket address: {:?}", socket_addr);
         if let Ok(date_time) = retrieve_data_from_header(&msg) {
             timestamp = date_time;
+            log::info!("Timestamp: {:?}", timestamp);
         };
 
         Ok((n, socket_addr, timestamp))

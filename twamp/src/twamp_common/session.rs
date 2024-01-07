@@ -95,7 +95,7 @@ impl Session {
     ) -> Result<(), CommonError> {
         let mut results = self.results.write()?;
         for result in results.iter_mut().skip(self.last_updated) {
-            log::info!("Updating timestamps for packet {}", result.sender_seq);
+            log::debug!("Updating timestamps for packet {}", result.sender_seq);
             if let Some(timestamp) = timestamps.next() {
                 let delta = timestamp - result.t1;
                 log::debug!("Delta: {:?}", delta);

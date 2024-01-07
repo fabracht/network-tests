@@ -177,7 +177,7 @@ pub fn socket_addr_to_storage(addr: &SocketAddr) -> Result<libc::sockaddr_storag
     Ok(storage)
 }
 
-pub fn to_msghdr(bytes: &[u8], address: &SocketAddr) -> libc::msghdr {
+pub fn to_msghdr(bytes: &mut [u8], address: &SocketAddr) -> libc::msghdr {
     let iov = [IoSlice::new(bytes)];
     let (mut sockaddr, _) = to_sockaddr(address);
 

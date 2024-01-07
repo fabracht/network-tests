@@ -95,7 +95,7 @@ impl Strategy<TwampResult, CommonError> for SessionSender {
         // This configures the tx socket timer.
         let timer_spec = Itimerspec {
             it_interval: self.packet_interval,
-            it_value: Duration::from_millis(10),
+            it_value: Duration::from_nanos(10),
         };
 
         // Create the Tx timed event to send twamp messages
