@@ -37,9 +37,9 @@ impl Reflector {
         let socket = mio::net::UdpSocket::bind(self.configuration.source_ip_address)?;
         let mut my_socket = TimestampedUdpSocket::new(socket.into_raw_fd());
         my_socket.set_fcntl_options()?;
-        my_socket.set_socket_options(libc::SOL_IP, libc::IP_RECVERR, Some(1))?;
-        // my_socket.set_socket_options(libc::IPPROTO_IP, libc::IP_RECVTOS, Some(2))?;
         my_socket.set_timestamping_options()?;
+        my_socket.set_socket_options(libc::SOL_IP, libc::IP_RECVERR, Some(1))?;
+        my_socket.set_socket_options(libc::IPPROTO_IP, libc::IP_RECVTOS, Some(1))?;
 
         Ok(my_socket)
     }
@@ -151,6 +151,8 @@ pub fn rx_callback(
                 sender_ttl: 255,
                 padding: vec![0_u8; twamp_test_message.padding.len() - MIN_UNAUTH_PADDING],
             };
+            log::debug!("Reflected message: \n {:?}", reflected_message);
+
             inner_socket.send_to(&socket_address, reflected_message.clone())?;
             session.add_to_sent(reflected_message)?;
         } else {
@@ -168,7 +170,7 @@ pub fn rx_callback(
                 sender_error_estimate: twamp_test_message.error_estimate,
                 mbz2: 0,
                 sender_ttl: 255,
-                padding: Vec::new(),
+                padding: vec![0; twamp_test_message.padding.len() - MIN_UNAUTH_PADDING],
             };
             log::debug!("Reflected message: \n {:?}", reflected_message);
             // Send message

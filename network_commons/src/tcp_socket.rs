@@ -101,8 +101,8 @@ impl TimestampedTcpSocket {
         if socket_fd < 0 {
             return Err(CommonError::SocketCreateFailed(io::Error::last_os_error()));
         }
-        let (sock_addr, sock_addr_len) = to_sockaddr(&addr);
-        let sock_addr_ptr = &sock_addr as *const _ as *const libc::sockaddr;
+        let (sock_addr, sock_addr_len) = to_sockaddr(addr);
+        let sock_addr_ptr = &sock_addr as *const _;
 
         if unsafe { libc::bind(socket_fd, sock_addr_ptr, sock_addr_len) } < 0 {
             return Err(CommonError::SocketBindFailed(io::Error::last_os_error()));
@@ -175,7 +175,7 @@ impl TimestampedTcpSocket {
             return Err(CommonError::SocketCreateFailed(io::Error::last_os_error()));
         }
         let (sock_addr, sock_addr_len) = to_sockaddr(&addr);
-        let sock_addr_ptr = &sock_addr as *const _ as *const libc::sockaddr;
+        let sock_addr_ptr = &sock_addr as *const _;
         let result = unsafe { libc::connect(socket_fd, sock_addr_ptr, sock_addr_len) };
         log::debug!("Connect result: {}", result);
         if result < 0 {

@@ -4,7 +4,7 @@ use network_commons::epoll_loop::LinuxEventLoop as EventLoop;
 use network_commons::{
     error::CommonError,
     event_loop::{EventLoopTrait, Itimerspec, Token},
-    socket::Socket,
+    socket::{Socket, DEFAULT_BUFFER_SIZE},
     time::NtpTimestamp,
     udp_socket::TimestampedUdpSocket,
     Strategy,
@@ -28,7 +28,7 @@ use std::{
 use super::result::{NetworkStatistics, SessionResult, TwampResult};
 
 /// The length of the iovec buffer for recvmmsg
-const BUFFER_LENGTH: usize = 4;
+const BUFFER_LENGTH: usize = 1;
 
 pub struct SessionSender {
     /// List of host on which runs a reflecctors to perform the test
@@ -62,7 +62,7 @@ impl SessionSender {
 
         my_socket.set_fcntl_options()?;
         my_socket.set_socket_options(libc::SOL_IP, libc::IP_RECVERR, Some(1))?;
-        my_socket.set_socket_options(libc::IPPROTO_IP, libc::IP_TOS, Some(1))?;
+        my_socket.set_socket_options(libc::IPPROTO_IP, libc::IP_TOS, Some(0))?;
 
         my_socket.set_timestamping_options()?;
 
@@ -384,7 +384,7 @@ pub fn create_rx_callback(
     rx_sessions: Arc<RwLock<Vec<Session>>>,
 ) -> impl Fn(&mut TimestampedUdpSocket, Token) -> Result<isize, CommonError> {
     move |inner_socket, _| {
-        let buffers = &mut [[0u8; 4096]; BUFFER_LENGTH];
+        let buffers = &mut [[0u8; DEFAULT_BUFFER_SIZE]; BUFFER_LENGTH];
         while let Ok(response_vec) = inner_socket.receive_from_multiple(buffers, BUFFER_LENGTH) {
             log::trace!("Received {} responses", response_vec.len());
             response_vec
@@ -394,7 +394,7 @@ pub fn create_rx_callback(
                     let received_bytes = &buffers[i][..*result];
                     let twamp_test_message: &Result<(ReflectedMessage, usize), CommonError> =
                         &ReflectedMessage::try_from_be_bytes(received_bytes).map_err(|e| e.into());
-                    log::trace!("Twamp Response Message {:?}", twamp_test_message);
+                    log::debug!("Twamp Response Message {:?}", twamp_test_message);
                     if let Ok(twamp_message) = twamp_test_message {
                         if let Ok(rw_lock_write_guard) = &rx_sessions.try_write() {
                             log::trace!(
@@ -406,7 +406,7 @@ pub fn create_rx_callback(
                                 .iter()
                                 .find(|session| session.tx_socket_address == *socket_address);
                             if let Some(session) = session_option {
-                                log::trace!("Received from session {}", session.tx_socket_address);
+                                log::debug!("Received from session {}", session.tx_socket_address);
                                 let _ =
                                     session.add_to_received(twamp_message.0.to_owned(), *datetime);
                                 // let latest_result = session.get_latest_result();

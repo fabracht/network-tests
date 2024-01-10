@@ -2,18 +2,16 @@ use bebytes::BeBytes;
 use libc::{iovec, mmsghdr, msghdr, recvmsg, sendmsg, sockaddr_storage, timespec};
 
 use std::io::{self, IoSliceMut};
-use std::net::Ipv6Addr;
+
 use std::os::fd::{AsRawFd, RawFd};
-use std::{
-    io::IoSlice,
-    net::{IpAddr, Ipv4Addr, SocketAddr},
-    ops::Deref,
-};
+use std::ptr;
+use std::{io::IoSlice, net::SocketAddr, ops::Deref};
 
 use crate::error::CommonError;
 use crate::libc_call;
 use crate::socket::{
     init_vec_of_mmsghdr, retrieve_data_from_header, storage_to_socket_addr, to_sockaddr, Socket,
+    DEFAULT_BUFFER_SIZE,
 };
 use crate::time::DateTime;
 
@@ -86,7 +84,7 @@ impl TimestampedUdpSocket {
         }
 
         let (sock_addr, sock_addr_len) = to_sockaddr(addr);
-        let sock_addr_ptr = &sock_addr as *const _ as *const libc::sockaddr;
+        let sock_addr_ptr = &sock_addr as *const _;
         if unsafe { libc::bind(socket_fd, sock_addr_ptr, sock_addr_len) } < 0 {
             return Err(CommonError::SocketBindFailed(io::Error::last_os_error()));
         }
@@ -107,49 +105,54 @@ impl TimestampedUdpSocket {
 
     pub fn receive_from_multiple(
         &self,
-        buffers: &mut [[u8; 4096]],
+        buffers: &mut [[u8; DEFAULT_BUFFER_SIZE]],
         num_messages: usize,
     ) -> Result<Vec<(usize, SocketAddr, DateTime)>, CommonError> {
         let fd = self.as_raw_fd();
-        let mut addr_storage: Vec<sockaddr_storage> =
-            vec![unsafe { std::mem::zeroed() }; num_messages];
         let mut msg_hdrs: Vec<mmsghdr> = Vec::new();
-        let mut iovecs: Vec<iovec> = Vec::with_capacity(num_messages);
-        for (i, buffer) in buffers.iter_mut().take(num_messages).enumerate() {
-            iovecs.push(iovec {
-                iov_base: buffer.as_mut_ptr() as *mut libc::c_void,
+        for buffer in buffers.iter_mut() {
+            let mut addr_storage: SocketAddr = unsafe { std::mem::zeroed() };
+            let buffer_ptr = buffer.as_mut_ptr();
+            let msg_iov = iovec {
+                iov_base: buffer_ptr as *mut libc::c_void,
                 iov_len: buffer.len(),
-            });
-
+            };
+            let msg_hdr = msghdr {
+                msg_name: &mut addr_storage as *mut _ as *mut libc::c_void,
+                msg_namelen: std::mem::size_of_val(&addr_storage) as u32,
+                msg_iov: &msg_iov as *const _ as *mut _,
+                msg_iovlen: core::mem::size_of_val(&msg_iov),
+                msg_control: [0; CMSG_SPACE_SIZE].as_mut_ptr() as *mut libc::c_void,
+                msg_controllen: CMSG_SPACE_SIZE,
+                msg_flags: 0,
+            };
             msg_hdrs.push(mmsghdr {
-                msg_hdr: msghdr {
-                    msg_name: &mut addr_storage[i] as *mut _ as *mut libc::c_void,
-                    msg_namelen: std::mem::size_of_val(&addr_storage[i]) as u32,
-                    msg_iov: &mut iovecs[i] as *mut iovec,
-                    msg_iovlen: iovecs.len(),
-                    msg_control: [0; CMSG_SPACE_SIZE].as_mut_ptr() as *mut libc::c_void,
-                    msg_controllen: CMSG_SPACE_SIZE,
-                    msg_flags: 0,
-                },
+                msg_hdr,
                 msg_len: std::mem::size_of::<msghdr>() as u32,
             });
         }
+        log::trace!("iov ptr {:?}", msg_hdrs[0].msg_hdr.msg_iov);
 
         let (mut timestamp, result) = match recvmmsg_timestamped(fd, &mut msg_hdrs, num_messages) {
             Ok(value) => value,
-            Err(value) => return value,
+            Err(e) => {
+                log::debug!("Error receiving multiple messages: {:?}", e);
+                return Err(e);
+            }
         };
+        log::trace!("iov ptr {:?}", msg_hdrs[0].msg_hdr.msg_iov);
 
         let mut received_data = Vec::new();
-        for i in 0..result as usize {
-            // let socket_addr = addresses[i];
-            let socket_addr = storage_to_socket_addr(&addr_storage[i])?;
-            if let Ok(datetime) = retrieve_data_from_header(&msg_hdrs[i].msg_hdr) {
+        for mmsg_hdr in msg_hdrs.iter().take(result as usize) {
+            let socket_addr = storage_to_socket_addr(unsafe {
+                &*(mmsg_hdr.msg_hdr.msg_name as *const libc::sockaddr_storage)
+            })?;
+            if let Ok(datetime) = retrieve_data_from_header(&mmsg_hdr.msg_hdr) {
                 timestamp = datetime;
+                log::debug!("Timestamp {:?} from {:?}", timestamp, socket_addr);
             };
-            received_data.push((msg_hdrs[i].msg_len as usize, socket_addr, timestamp));
+            received_data.push((mmsg_hdr.msg_len as usize, socket_addr, timestamp));
         }
-
         Ok(received_data)
     }
 
@@ -167,7 +170,7 @@ impl TimestampedUdpSocket {
     ) -> Result<Vec<DateTime>, CommonError> {
         let mut timestamps = Vec::new();
         // log::info!("Addresses {:?}", addresses);
-        let mut msg_buffers: [[u8; 4096]; MAX_MSG] = unsafe { core::mem::zeroed() };
+        let mut msg_buffers: [[u8; DEFAULT_BUFFER_SIZE]; MAX_MSG] = unsafe { core::mem::zeroed() };
         let mut msgvec = init_vec_of_mmsghdr(MAX_MSG, &mut msg_buffers, addresses);
 
         let res = unsafe {
@@ -197,9 +200,9 @@ impl TimestampedUdpSocket {
     ///
     /// Returns a tuple containing the size of the received message,
     /// the sender's address, and the timestamp of the message.
-    pub fn receive_error(&mut self) -> Result<(usize, SocketAddr, DateTime), CommonError> {
-        let mut iov_buffer = [0u8; 4096];
-        let mut msg_buffer = [0u8; 4096];
+    pub fn retrieve_tx_timestamp(&mut self) -> Result<(usize, SocketAddr, DateTime), CommonError> {
+        let mut iov_buffer = [0u8; DEFAULT_BUFFER_SIZE];
+        let mut msg_buffer = [0u8; DEFAULT_BUFFER_SIZE];
         let mut addr_storage: sockaddr_storage = unsafe { core::mem::zeroed() };
 
         let mut iov = iovec {
@@ -225,10 +228,10 @@ impl TimestampedUdpSocket {
             let socket_addr = storage_to_socket_addr(&addr_storage)?;
             if res >= 0 {
                 let datetime = retrieve_data_from_header(&msgh)?;
-                return Ok((res as usize, socket_addr, datetime));
+                Ok((res as usize, socket_addr, datetime))
             } else {
                 let err = std::io::Error::last_os_error();
-                return Err(CommonError::Io(err));
+                Err(CommonError::Io(err))
             }
         }
     }
@@ -236,13 +239,9 @@ impl TimestampedUdpSocket {
 
 fn recvmmsg_timestamped(
     fd: i32,
-    msg_hdrs: &mut Vec<mmsghdr>,
+    msg_hdrs: &mut [mmsghdr],
     num_messages: usize,
-) -> Result<(DateTime, i32), Result<Vec<(usize, SocketAddr, DateTime)>, CommonError>> {
-    let mut timeout = timespec {
-        tv_sec: 0,
-        tv_nsec: 100000, // 100us
-    };
+) -> Result<(DateTime, i32), CommonError> {
     let timestamp = DateTime::utc_now();
     let result = unsafe {
         libc::recvmmsg(
@@ -250,12 +249,16 @@ fn recvmmsg_timestamped(
             msg_hdrs.as_mut_ptr(),
             num_messages as u32,
             0,
-            &mut timeout as *mut timespec, // wait for 1ms
+            ptr::null::<timespec>() as *mut _,
         )
     };
+    log::trace!("First buffer {:?}", unsafe {
+        msg_hdrs[0].msg_hdr.msg_iov.read().iov_len
+    });
     if result < 0 {
         let last_os_error = io::Error::last_os_error();
-        return Err(Err(last_os_error.into()));
+        log::debug!("Error receiving multiple messages: {:?}", last_os_error);
+        return Err(last_os_error.into());
     }
     Ok((timestamp, result))
 }
@@ -283,7 +286,6 @@ impl Socket<TimestampedUdpSocket> for TimestampedUdpSocket {
         message: impl BeBytes,
     ) -> Result<(isize, DateTime), CommonError> {
         let fd = self.as_raw_fd();
-        let utc_now: DateTime;
         let bytes = message.to_be_bytes();
         let iov = [IoSlice::new(&bytes)];
 
@@ -298,7 +300,7 @@ impl Socket<TimestampedUdpSocket> for TimestampedUdpSocket {
             msg_controllen: 0,
             msg_flags: 0,
         };
-        utc_now = DateTime::utc_now();
+        let utc_now = DateTime::utc_now();
         let result = unsafe { sendmsg(fd, &msg, 0) };
         Ok((result, utc_now))
     }
@@ -321,7 +323,7 @@ impl Socket<TimestampedUdpSocket> for TimestampedUdpSocket {
         msg.msg_iov = iov.as_ptr() as *mut iovec;
         msg.msg_iovlen = iov.len();
         const SPACE_SIZE: usize =
-            unsafe { libc::CMSG_SPACE(core::mem::size_of::<libc::timeval>() as u32) as usize + 8 };
+            unsafe { libc::CMSG_SPACE(core::mem::size_of::<libc::timeval>() as u32) as usize };
         let mut cmsg_space: [u8; SPACE_SIZE] = unsafe { core::mem::zeroed() };
         msg.msg_control = cmsg_space.as_mut_ptr() as *mut libc::c_void;
         msg.msg_controllen = cmsg_space.len();
@@ -334,28 +336,12 @@ impl Socket<TimestampedUdpSocket> for TimestampedUdpSocket {
             return Err(CommonError::Io(std::io::Error::last_os_error()));
         }
 
-        // let socket_addr = match addr_storage.ss_family as i32 {
-        //     libc::AF_INET => {
-        //         let sockaddr: &libc::sockaddr_in = unsafe { core::mem::transmute(&addr_storage) };
-        //         SocketAddr::new(
-        //             IpAddr::V4(Ipv4Addr::from(sockaddr.sin_addr.s_addr.to_be())),
-        //             sockaddr.sin_port.to_be(),
-        //         )
-        //     }
-        //     libc::AF_INET6 => {
-        //         let sockaddr: &libc::sockaddr_in6 = unsafe { core::mem::transmute(&addr_storage) };
-        //         SocketAddr::new(
-        //             IpAddr::V6(Ipv6Addr::from(sockaddr.sin6_addr.s6_addr)),
-        //             sockaddr.sin6_port.to_be(),
-        //         )
-        //     }
-        //     _ => return Err(CommonError::UnknownAddressFamily),
-        // };
-        let socket_addr = storage_to_socket_addr(unsafe { core::mem::transmute(msg.msg_name) })?;
-        log::warn!("Socket address: {:?}", socket_addr);
+        let socket_addr =
+            storage_to_socket_addr(unsafe { &*(msg.msg_name as *const libc::sockaddr_storage) })?;
+        log::debug!("Socket address: {:?}", socket_addr);
         if let Ok(date_time) = retrieve_data_from_header(&msg) {
             timestamp = date_time;
-            log::info!("Timestamp: {:?}", timestamp);
+            log::debug!("Timestamp: {:?}", timestamp);
         };
 
         Ok((n, socket_addr, timestamp))
