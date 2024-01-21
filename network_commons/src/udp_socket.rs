@@ -10,8 +10,8 @@ use std::{io::IoSlice, net::SocketAddr, ops::Deref};
 use crate::error::CommonError;
 use crate::libc_call;
 use crate::socket::{
-    init_vec_of_mmsghdr, retrieve_data_from_header, storage_to_socket_addr, to_sockaddr, Socket,
-    DEFAULT_BUFFER_SIZE,
+    init_vec_of_mmsghdr, retrieve_data_from_header, socketaddr_to_sockaddr, storage_to_socket_addr,
+    to_msghdr, Socket, DEFAULT_BUFFER_SIZE,
 };
 use crate::time::DateTime;
 
@@ -83,7 +83,7 @@ impl TimestampedUdpSocket {
             return Err(CommonError::SocketCreateFailed(io::Error::last_os_error()));
         }
 
-        let (sock_addr, sock_addr_len) = to_sockaddr(addr);
+        let (sock_addr, sock_addr_len) = socketaddr_to_sockaddr(addr);
         let sock_addr_ptr = &sock_addr as *const _;
         if unsafe { libc::bind(socket_fd, sock_addr_ptr, sock_addr_len) } < 0 {
             return Err(CommonError::SocketBindFailed(io::Error::last_os_error()));
@@ -96,7 +96,7 @@ impl TimestampedUdpSocket {
     /// sets the default destination address for future sends and limits
     /// incoming packets to come only from the specified address.
     pub fn connect(&self, address: SocketAddr) -> Result<i32, CommonError> {
-        let (addr, len) = to_sockaddr(&address);
+        let (addr, len) = socketaddr_to_sockaddr(&address);
         let res = libc_call!(connect(self.inner, &addr as *const _ as *const _, len))
             .map_err(CommonError::Io)?;
 
@@ -201,31 +201,17 @@ impl TimestampedUdpSocket {
     /// Returns a tuple containing the size of the received message,
     /// the sender's address, and the timestamp of the message.
     pub fn retrieve_tx_timestamp(&mut self) -> Result<(usize, SocketAddr, DateTime), CommonError> {
-        let mut iov_buffer = [0u8; DEFAULT_BUFFER_SIZE];
         let mut msg_buffer = [0u8; DEFAULT_BUFFER_SIZE];
-        let mut addr_storage: sockaddr_storage = unsafe { core::mem::zeroed() };
+        let mut address: SocketAddr = unsafe { core::mem::zeroed() };
 
-        let mut iov = iovec {
-            iov_base: iov_buffer.as_mut_ptr() as *mut libc::c_void,
-            iov_len: iov_buffer.len(),
-        };
-
-        #[cfg(target_os = "linux")]
-        let mut msgh = msghdr {
-            msg_name: &mut addr_storage as *mut _ as *mut libc::c_void,
-            msg_namelen: core::mem::size_of_val(&addr_storage) as u32,
-            msg_iov: &mut iov as *mut iovec,
-            msg_iovlen: 1,
-            msg_control: msg_buffer.as_mut_ptr() as *mut libc::c_void,
-            msg_controllen: msg_buffer.len(),
-            msg_flags: 0,
-        };
+        let mut msgh = to_msghdr(&mut msg_buffer, &mut address);
 
         #[cfg(target_os = "linux")]
         {
             let res = unsafe { libc::recvmsg(self.as_raw_fd(), &mut msgh, libc::MSG_ERRQUEUE) };
-
-            let socket_addr = storage_to_socket_addr(&addr_storage)?;
+            let socket_addr = storage_to_socket_addr(unsafe {
+                &*(msgh.msg_name as *const libc::sockaddr_storage)
+            })?;
             if res >= 0 {
                 let datetime = retrieve_data_from_header(&msgh)?;
                 Ok((res as usize, socket_addr, datetime))
@@ -289,7 +275,7 @@ impl Socket<TimestampedUdpSocket> for TimestampedUdpSocket {
         let bytes = message.to_be_bytes();
         let iov = [IoSlice::new(&bytes)];
 
-        let (mut sock_addr, _len) = to_sockaddr(address);
+        let (mut sock_addr, _len) = socketaddr_to_sockaddr(address);
         log::trace!("Sending to {:?}", sock_addr.sa_data);
         let msg = msghdr {
             msg_name: &mut sock_addr as *mut _ as *mut libc::c_void,
@@ -322,8 +308,9 @@ impl Socket<TimestampedUdpSocket> for TimestampedUdpSocket {
         msg.msg_namelen = core::mem::size_of_val(&addr_storage) as u32;
         msg.msg_iov = iov.as_ptr() as *mut iovec;
         msg.msg_iovlen = iov.len();
-        const SPACE_SIZE: usize =
-            unsafe { libc::CMSG_SPACE(core::mem::size_of::<libc::timeval>() as u32) as usize };
+        const SPACE_SIZE: usize = unsafe {
+            libc::CMSG_SPACE(core::mem::size_of::<libc::timeval>() as u32) as usize * MAX_MSG
+        };
         let mut cmsg_space: [u8; SPACE_SIZE] = unsafe { core::mem::zeroed() };
         msg.msg_control = cmsg_space.as_mut_ptr() as *mut libc::c_void;
         msg.msg_controllen = cmsg_space.len();

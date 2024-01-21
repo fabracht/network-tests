@@ -2,7 +2,7 @@ use bebytes::BeBytes;
 use libc::MSG_NOSIGNAL;
 
 use crate::{
-    socket::{storage_to_socket_addr, to_sockaddr, Socket},
+    socket::{socketaddr_to_sockaddr, storage_to_socket_addr, Socket},
     time::DateTime,
     CommonError,
 };
@@ -101,7 +101,7 @@ impl TimestampedTcpSocket {
         if socket_fd < 0 {
             return Err(CommonError::SocketCreateFailed(io::Error::last_os_error()));
         }
-        let (sock_addr, sock_addr_len) = to_sockaddr(addr);
+        let (sock_addr, sock_addr_len) = socketaddr_to_sockaddr(addr);
         let sock_addr_ptr = &sock_addr as *const _;
 
         if unsafe { libc::bind(socket_fd, sock_addr_ptr, sock_addr_len) } < 0 {
@@ -174,7 +174,7 @@ impl TimestampedTcpSocket {
         if socket_fd < 0 {
             return Err(CommonError::SocketCreateFailed(io::Error::last_os_error()));
         }
-        let (sock_addr, sock_addr_len) = to_sockaddr(&addr);
+        let (sock_addr, sock_addr_len) = socketaddr_to_sockaddr(&addr);
         let sock_addr_ptr = &sock_addr as *const _;
         let result = unsafe { libc::connect(socket_fd, sock_addr_ptr, sock_addr_len) };
         log::debug!("Connect result: {}", result);
