@@ -1,12 +1,16 @@
 use bebytes::BeBytes;
-use libc::{sockaddr, sockaddr_in, sockaddr_in6, socklen_t, AF_INET, AF_INET6, MSG_NOSIGNAL};
+use libc::MSG_NOSIGNAL;
 
-use crate::{socket::Socket, time::DateTime, CommonError};
+use crate::{
+    socket::{socketaddr_to_sockaddr, storage_to_socket_addr, Socket},
+    time::DateTime,
+    CommonError,
+};
 use core::ops::Deref;
 
 use std::{
     io,
-    net::{Ipv4Addr, Ipv6Addr, SocketAddr},
+    net::SocketAddr,
     os::fd::{AsRawFd, RawFd},
 };
 
@@ -97,43 +101,10 @@ impl TimestampedTcpSocket {
         if socket_fd < 0 {
             return Err(CommonError::SocketCreateFailed(io::Error::last_os_error()));
         }
+        let (sock_addr, sock_addr_len) = socketaddr_to_sockaddr(addr);
+        let sock_addr_ptr = &sock_addr as *const _;
 
-        let (sock_addr, sock_addr_len) = match addr {
-            SocketAddr::V4(a) => {
-                let ip_octets = a.ip().octets();
-                let in_addr = libc::in_addr {
-                    s_addr: u32::from_be_bytes(ip_octets),
-                };
-                let sockaddr = sockaddr_in {
-                    sin_family: AF_INET as libc::sa_family_t,
-                    sin_port: a.port().to_be(),
-                    sin_addr: in_addr,
-                    sin_zero: [0; 8],
-                };
-                (
-                    &sockaddr as *const sockaddr_in as *const sockaddr,
-                    std::mem::size_of_val(&sockaddr) as socklen_t,
-                )
-            }
-            SocketAddr::V6(a) => {
-                let ip_octets = a.ip().octets();
-                let mut in6_addr = libc::in6_addr { s6_addr: [0; 16] };
-                in6_addr.s6_addr.copy_from_slice(&ip_octets);
-                let sockaddr = sockaddr_in6 {
-                    sin6_family: AF_INET6 as libc::sa_family_t,
-                    sin6_port: a.port().to_be(),
-                    sin6_addr: in6_addr,
-                    sin6_flowinfo: a.flowinfo(),
-                    sin6_scope_id: a.scope_id(),
-                };
-                (
-                    &sockaddr as *const sockaddr_in6 as *const sockaddr,
-                    std::mem::size_of_val(&sockaddr) as socklen_t,
-                )
-            }
-        };
-
-        if unsafe { libc::bind(socket_fd, sock_addr, sock_addr_len) } < 0 {
+        if unsafe { libc::bind(socket_fd, sock_addr_ptr, sock_addr_len) } < 0 {
             return Err(CommonError::SocketBindFailed(io::Error::last_os_error()));
         }
 
@@ -182,27 +153,7 @@ impl TimestampedTcpSocket {
         if new_socket_fd < 0 {
             return Err(CommonError::SocketAcceptFailed(io::Error::last_os_error()));
         }
-
-        let client_addr = match addr_storage.ss_family as libc::c_int {
-            AF_INET => {
-                let sockaddr: *const sockaddr_in = &addr_storage as *const _ as *const sockaddr_in;
-                let sockaddr: &sockaddr_in = unsafe { &*sockaddr };
-                let ip = Ipv4Addr::from(sockaddr.sin_addr.s_addr.to_le_bytes());
-                let port = u16::from_be(sockaddr.sin_port);
-                SocketAddr::V4(std::net::SocketAddrV4::new(ip, port))
-            }
-            AF_INET6 => {
-                let sockaddr: *const sockaddr_in6 =
-                    &addr_storage as *const _ as *const sockaddr_in6;
-                let sockaddr: &sockaddr_in6 = unsafe { &*sockaddr };
-                let ip = Ipv6Addr::from(sockaddr.sin6_addr.s6_addr);
-                let port = u16::from_be(sockaddr.sin6_port);
-                let flowinfo = sockaddr.sin6_flowinfo;
-                let scope_id = sockaddr.sin6_scope_id;
-                SocketAddr::V6(std::net::SocketAddrV6::new(ip, port, flowinfo, scope_id))
-            }
-            _ => return Err(CommonError::UnknownAddressFamily),
-        };
+        let client_addr = storage_to_socket_addr(&addr_storage)?;
         Ok((
             TimestampedTcpSocket {
                 inner: new_socket_fd,
@@ -223,41 +174,9 @@ impl TimestampedTcpSocket {
         if socket_fd < 0 {
             return Err(CommonError::SocketCreateFailed(io::Error::last_os_error()));
         }
-
-        let mut sockaddr_storage: libc::sockaddr_storage = unsafe { std::mem::zeroed() };
-        let (sock_addr, sock_addr_len) = match addr {
-            SocketAddr::V4(a) => {
-                let sockaddr = &mut sockaddr_storage as *mut _ as *mut libc::sockaddr_in;
-                unsafe {
-                    (*sockaddr).sin_family = libc::AF_INET as libc::sa_family_t;
-                    (*sockaddr).sin_port = a.port().to_be();
-                    (*sockaddr).sin_addr.s_addr = u32::from_le_bytes(a.ip().octets());
-                }
-                (
-                    sockaddr as *const libc::sockaddr,
-                    std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
-                )
-            }
-            SocketAddr::V6(a) => {
-                let sockaddr = &mut sockaddr_storage as *mut _ as *mut libc::sockaddr_in6;
-                unsafe {
-                    (*sockaddr).sin6_family = libc::AF_INET6 as libc::sa_family_t;
-                    (*sockaddr).sin6_port = a.port().to_be();
-                    (*sockaddr)
-                        .sin6_addr
-                        .s6_addr
-                        .copy_from_slice(&a.ip().octets());
-                    (*sockaddr).sin6_flowinfo = a.flowinfo();
-                    (*sockaddr).sin6_scope_id = a.scope_id();
-                }
-                (
-                    sockaddr as *const libc::sockaddr,
-                    std::mem::size_of::<libc::sockaddr_in6>() as libc::socklen_t,
-                )
-            }
-        };
-
-        let result = unsafe { libc::connect(socket_fd, sock_addr, sock_addr_len) };
+        let (sock_addr, sock_addr_len) = socketaddr_to_sockaddr(&addr);
+        let sock_addr_ptr = &sock_addr as *const _;
+        let result = unsafe { libc::connect(socket_fd, sock_addr_ptr, sock_addr_len) };
         log::debug!("Connect result: {}", result);
         if result < 0 {
             let err = io::Error::last_os_error();
@@ -352,30 +271,7 @@ impl Socket<TimestampedTcpSocket> for TimestampedTcpSocket {
         {
             return Err(CommonError::SocketGetPeerName(io::Error::last_os_error()));
         }
-
-        let peer_address = match addr_storage.ss_family as libc::c_int {
-            AF_INET => {
-                let sockaddr: *const sockaddr_in = &addr_storage as *const _ as *const sockaddr_in;
-                let sockaddr: &sockaddr_in = unsafe { &*sockaddr };
-                let ip = Ipv4Addr::from(sockaddr.sin_addr.s_addr.to_le_bytes());
-                let port = u16::from_be(sockaddr.sin_port);
-                SocketAddr::V4(std::net::SocketAddrV4::new(ip, port))
-            }
-            AF_INET6 => {
-                let sockaddr: *const sockaddr_in6 =
-                    &addr_storage as *const _ as *const sockaddr_in6;
-                let sockaddr: &sockaddr_in6 = unsafe { &*sockaddr };
-                let ip = Ipv6Addr::from(sockaddr.sin6_addr.s6_addr);
-                let port = u16::from_be(sockaddr.sin6_port);
-                let flowinfo = sockaddr.sin6_flowinfo;
-                let scope_id = sockaddr.sin6_scope_id;
-                SocketAddr::V6(std::net::SocketAddrV6::new(ip, port, flowinfo, scope_id))
-            }
-            _ => {
-                return Err(CommonError::UnknownAddressFamily);
-            }
-        };
-
+        let peer_address = storage_to_socket_addr(&addr_storage)?;
         Ok((result, peer_address, timestamp))
     }
 }

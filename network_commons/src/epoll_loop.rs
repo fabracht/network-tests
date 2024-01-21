@@ -53,6 +53,7 @@ pub struct LinuxEventLoop<T: AsRawFd + Send> {
     /// The overtime period removes all timed events, but keeps
     /// listening for readable events
     overtime: Option<Itimerspec>,
+    overtime_exceptions: Vec<Token>,
     cleanup: Option<Itimerspec>,
     cleanup_token: Option<Token>,
 }
@@ -74,6 +75,10 @@ impl<T: AsRawFd + Send> LinuxEventLoop<T> {
     /// * `overtime`: A `Itimerspec` specifying the new overtime period.
     pub fn set_overtime(&mut self, overtime: Itimerspec) {
         self.overtime = Some(overtime);
+    }
+
+    pub fn add_overtime_exception(&mut self, tx_correct_token: Token) {
+        self.overtime_exceptions.push(tx_correct_token);
     }
 }
 
@@ -97,6 +102,7 @@ impl<T: AsRawFd + Send + 'static> EventLoopTrait<T> for LinuxEventLoop<T> {
                 it_interval: core::time::Duration::ZERO,
                 it_value: core::time::Duration::from_secs(1),
             }),
+            overtime_exceptions: Vec::new(),
             cleanup: None,
             cleanup_token: None,
         })
@@ -194,6 +200,7 @@ impl<T: AsRawFd + Send + 'static> EventLoopTrait<T> for LinuxEventLoop<T> {
                                         drop(timed_sources);
                                         self.unregister_timed_event_source(cleanup_token)?;
                                         self.cleanup_token = None;
+
                                         continue 'outer;
                                     }
                                 }
@@ -203,7 +210,11 @@ impl<T: AsRawFd + Send + 'static> EventLoopTrait<T> for LinuxEventLoop<T> {
                                 drop(timed_sources);
                                 // Unregister all timed events
                                 tokens.iter().for_each(|token| {
-                                    let _ = self.unregister_timed_event_source(*token);
+                                    log::trace!("unregistering timed event {:?}?", token);
+                                    if !self.overtime_exceptions.contains(token) {
+                                        log::trace!("unregistering timed event {:?}", token);
+                                        let _ = self.unregister_timed_event_source(*token);
+                                    }
                                 });
 
                                 log::debug!("Entering Overtime {:?}", self.overtime);

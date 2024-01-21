@@ -1,5 +1,5 @@
 {
   "mode": "LIGHT_REFLECTOR",
-  "source_ip_address": "127.0.0.1:45571",
+  "source_ip_address": "172.17.0.3:45571",
   "ref_wait": 1
 }

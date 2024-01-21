@@ -26,5 +26,6 @@ FROM debian:latest
 WORKDIR /app
 COPY --from=builder /app/target/release/examples/twamp_example /usr/local/bin/twamp
 COPY --from=builder /app/twamp/log_config.yml /usr/local/bin/log_config.yml
-COPY --from=builder /app/twamp/examples/configurations/receiver_config.json /usr/local/bin/receiver_config.json
-CMD ["/usr/local/bin/twamp", "/usr/local/bin/receiver_config.json"]
+# COPY --from=builder /app/twamp/examples/configurations/receiver_config.json /usr/local/bin/receiver_config.json
+# CMD ["/usr/local/bin/twamp", "/usr/local/bin/receiver_config.json"]
+ENTRYPOINT ["/usr/local/bin/twamp"]
