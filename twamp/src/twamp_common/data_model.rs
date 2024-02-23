@@ -1,7 +1,7 @@
 use std::{net::SocketAddr, ops::BitAnd, time::Duration};
 
 use bebytes::BeBytes;
-use network_commons::time::DateTime;
+use network_commons::{interval::Interval, time::DateTime};
 use serde::{ser::SerializeStruct, Deserialize, Serialize, Serializer};
 
 pub trait Message {
@@ -57,22 +57,22 @@ impl Serialize for PacketResults {
 
 impl PacketResults {
     pub fn calculate_rtt(&self) -> Option<Duration> {
-        Some(self.t4? - self.t1)
+        Some((self.t4? - self.t1).into())
     }
-    pub fn calculate_owd_forward(&self) -> Option<Duration> {
+    pub fn calculate_owd_forward(&self) -> Option<Interval> {
         let duration = self.t2? - self.t1;
         log::debug!("OWD Forward Duration: {:?}", duration);
 
         Some(duration)
     }
-    pub fn calculate_owd_backward(&self) -> Option<Duration> {
+    pub fn calculate_owd_backward(&self) -> Option<Interval> {
         let duration = self.t4? - self.t3?;
         log::debug!("OWD Backward Duration: {:?}", duration);
         Some(duration)
     }
     /// Calculates the Remote Processing Delay, which is the time the packet took to be processed on the server
     pub fn calculate_rpd(&self) -> Option<Duration> {
-        Some(self.t3? - self.t2?)
+        Some((self.t3? - self.t2?).into())
     }
 }
 

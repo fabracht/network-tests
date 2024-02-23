@@ -11,8 +11,8 @@ ARG USER_GID=$USER_UID
 ARG USERNAME=vscode
 # Install sudo
 RUN apt-get update && \
-    apt-get install -y sudo \
-    apt-get install clang -y \
+    apt-get install -y sudo && \
+    apt-get install clang -y && \
     apt-get install mold -y
 
 # Create the user with the specified USER_UID and add it to sudoers

@@ -147,6 +147,26 @@ pub struct NetworkStatistics {
         serialize_with = "round_option_f64_with_precision"
     )]
     pub high_percentile_process_time: Option<f64>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "round_option_f64_with_precision"
+    )]
+    pub avg_forward_jitter: Option<f64>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "round_option_f64_with_precision"
+    )]
+    pub avg_backward_jitter: Option<f64>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "round_option_f64_with_precision"
+    )]
+    pub std_dev_forward_jitter: Option<f64>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "round_option_f64_with_precision"
+    )]
+    pub std_dev_backward_jitter: Option<f64>,
     pub forward_loss: u32,
     pub backward_loss: u32,
     pub total_loss: u32,
@@ -171,7 +191,7 @@ fn round_f64_with_precision<S>(num: &f64, serializer: S) -> Result<S::Ok, S::Err
 where
     S: serde::Serializer,
 {
-    let precision = NETWORK_PRECISION; // Change this value to set the number of digits after the decimal point
+    let precision = NETWORK_PRECISION;
     let factor = 10f64.powi(precision);
     let rounded = (num * factor).round() / factor;
     serializer.serialize_f64(rounded)

@@ -107,7 +107,7 @@ pub fn cleanup_stale_sessions(
                         if let Some(last_sent) = last_sent {
                             let diff = now - last_sent;
                             log::debug!("Diff {:?}, ref_wait: {}, now: {:?}", diff, ref_wait, now);
-                            if diff > Duration::from_secs(ref_wait) {
+                            if diff.duration > Duration::from_secs(ref_wait) {
                                 return false;
                             }
                         }

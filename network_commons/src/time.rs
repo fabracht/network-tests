@@ -1,4 +1,5 @@
 use crate::error::CommonError;
+use crate::interval::Interval;
 use bebytes::BeBytes;
 use core::fmt::{self};
 use core::ops::{Add, Sub};
@@ -145,30 +146,48 @@ impl Sub<Duration> for DateTime {
     type Output = DateTime;
 
     fn sub(self, other: Duration) -> DateTime {
-        let secs = (self.sec as i64 - other.as_secs() as i64).abs();
-        let nanos = (self.nanos as i32 - other.subsec_nanos() as i32).abs();
-        let nanos_overflow = if nanos < 0 { 1 } else { 0 };
-        let nanos = ((nanos + 1_000_000_000 * nanos_overflow) % 1_000_000_000) as u32;
+        // Calculate seconds and nanoseconds difference without absolute value,
+        // allowing for negative durations.
+        let mut secs = self.sec as i64 - other.as_secs() as i64;
+        let mut nanos = self.nanos as i64 - other.subsec_nanos() as i64;
+
+        // If nanos is negative, borrow 1 from secs and adjust nanos accordingly.
+        if nanos < 0 {
+            secs -= 1;
+            nanos += 1_000_000_000; // Adjust nanos after borrowing from secs.
+        }
+
+        // Ensure secs does not go negative
+        if secs < 0 {
+            secs = 0;
+            nanos = 0;
+        }
+
         DateTime {
             sec: secs as u32,
-            nanos,
+            nanos: nanos as u32,
         }
     }
 }
 
 impl Sub<DateTime> for DateTime {
-    type Output = Duration;
-
-    fn sub(self, other: DateTime) -> Duration {
+    type Output = Interval;
+    fn sub(self, other: DateTime) -> Interval {
         let secs_diff = self.sec as i64 - other.sec as i64;
         let nanos_diff = self.nanos as i64 - other.nanos as i64;
-        let secs_diff = if nanos_diff < 0 {
-            secs_diff - 1
-        } else {
-            secs_diff
-        };
-        let nanos_diff = ((nanos_diff + 1_000_000_000) % 1_000_000_000) as u32;
-        Duration::new(secs_diff as u64, nanos_diff)
+
+        // Combine the seconds and nanoseconds differences into a total nanoseconds difference
+        let total_nanos_diff = secs_diff * 1_000_000_000 + nanos_diff;
+
+        // Determine the sign and absolute value of the total difference
+        let sign = if total_nanos_diff < 0 { -1 } else { 1 };
+        let abs_nanos_diff = total_nanos_diff.abs();
+
+        // Convert the absolute nanoseconds difference into seconds and nanoseconds
+        let duration_secs = (abs_nanos_diff / 1_000_000_000) as u64;
+        let duration_nanos = (abs_nanos_diff % 1_000_000_000) as u32;
+
+        Interval::new(Duration::new(duration_secs, duration_nanos), sign)
     }
 }
 

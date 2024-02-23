@@ -19,6 +19,7 @@ pub mod epoll_loop;
 pub mod event_loop;
 pub mod socket;
 
+pub mod interval;
 pub mod stats;
 pub mod tcp_socket;
 pub mod time;

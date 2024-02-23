@@ -157,11 +157,16 @@ pub fn calculate_session_results(
             let mut f_owd_vec = Vec::new();
             let mut b_owd_vec = Vec::new();
             let mut rpd_vec = Vec::new();
+            let mut forward_jitter_vec = Vec::new();
+            let mut backward_jitter_vec = Vec::new();
 
             let mut rtt_sum = 0.0;
             let mut f_owd_sum = 0.0;
             let mut b_owd_sum = 0.0;
             let mut rpd_sum = 0.0;
+
+            let mut prev_forward_owd: Option<f64> = None;
+            let mut prev_backward_owd: Option<f64> = None;
 
             for packet in packets.iter() {
                 if let Some(rtt) = packet.calculate_rtt() {
@@ -174,12 +179,26 @@ pub fn calculate_session_results(
                     let owd = owd.as_nanos() as f64;
                     f_owd_vec.push(owd);
                     f_owd_sum += owd;
+
+                    // Calculate forward jitter
+                    if let Some(prev_fwd) = prev_forward_owd {
+                        let fwd_jitter = (owd - prev_fwd).abs();
+                        forward_jitter_vec.push(fwd_jitter);
+                    }
+                    prev_forward_owd = Some(owd);
                 }
 
                 if let Some(owd) = packet.calculate_owd_backward() {
                     let owd = owd.as_nanos() as f64;
                     b_owd_vec.push(owd);
                     b_owd_sum += owd;
+
+                    // Calculate backward jitter
+                    if let Some(prev_bwd) = prev_backward_owd {
+                        let bwd_jitter = (owd - prev_bwd).abs();
+                        backward_jitter_vec.push(bwd_jitter);
+                    }
+                    prev_backward_owd = Some(owd);
                 }
 
                 if let Some(rpd) = packet.calculate_rpd() {
@@ -194,6 +213,8 @@ pub fn calculate_session_results(
             f_owd_vec.sort_by(|a, b| a.total_cmp(b));
             b_owd_vec.sort_by(|a, b| a.total_cmp(b));
             rpd_vec.sort_by(|a, b| a.total_cmp(b));
+            forward_jitter_vec.sort_by(|a, b| a.total_cmp(b));
+            backward_jitter_vec.sort_by(|a, b| a.total_cmp(b));
 
             let gamlr_offset = session.calculate_gamlr_offset(&f_owd_vec, &b_owd_vec);
             let avg_rtt = if total_packets > 0 {
@@ -216,6 +237,24 @@ pub fn calculate_session_results(
             } else {
                 None
             };
+            let avg_forward_jitter = if !forward_jitter_vec.is_empty() {
+                Some(forward_jitter_vec.iter().sum::<f64>() / forward_jitter_vec.len() as f64)
+            } else {
+                None
+            };
+            let avg_backward_jitter = if !backward_jitter_vec.is_empty() {
+                Some(backward_jitter_vec.iter().sum::<f64>() / backward_jitter_vec.len() as f64)
+            } else {
+                None
+            };
+            let std_dev_forward_jitter = calculate_std_dev(
+                &forward_jitter_vec,
+                forward_jitter_vec.iter().sum::<f64>() / forward_jitter_vec.len() as f64,
+            );
+            let std_dev_backward_jitter = calculate_std_dev(
+                &backward_jitter_vec,
+                backward_jitter_vec.iter().sum::<f64>() / backward_jitter_vec.len() as f64,
+            );
             let network_results = NetworkStatistics {
                 avg_rtt,
                 min_rtt: rtt_vec.iter().min_by(|a, b| a.total_cmp(b)).copied(),
@@ -251,6 +290,10 @@ pub fn calculate_session_results(
                 median_process_time: median(&rpd_vec),
                 low_percentile_process_time: percentile(&rpd_vec, 25.0),
                 high_percentile_process_time: percentile(&rpd_vec, 75.0),
+                avg_forward_jitter,
+                avg_backward_jitter,
+                std_dev_forward_jitter,
+                std_dev_backward_jitter,
                 forward_loss,
                 backward_loss,
                 total_loss,
@@ -414,7 +457,7 @@ pub fn create_rx_callback(
                                 // if let Ok(json_result) =
                                 //     serde_json::to_string_pretty(&latest_result)
                                 // {
-                                //     log::trace!("Latest {}", json_result);
+                                //     log::info!("Latest {}", json_result);
                                 // }
                             }
                         }
