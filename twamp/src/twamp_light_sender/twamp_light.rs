@@ -167,8 +167,9 @@ pub fn calculate_session_results(
 
             let mut prev_forward_owd: Option<f64> = None;
             let mut prev_backward_owd: Option<f64> = None;
-
+            log::info!("Packets len {}", packets.len());
             for packet in packets.iter() {
+                log::info!("packet {:?}", packet);
                 if let Some(rtt) = packet.calculate_rtt() {
                     let rtt = rtt.as_nanos() as f64;
                     rtt_vec.push(rtt);
@@ -427,42 +428,35 @@ pub fn create_rx_callback(
     rx_sessions: Arc<RwLock<Vec<Session>>>,
 ) -> impl Fn(&mut TimestampedUdpSocket, Token) -> Result<isize, CommonError> {
     move |inner_socket, _| {
-        let buffers = &mut [[0u8; DEFAULT_BUFFER_SIZE]; BUFFER_LENGTH];
-        while let Ok(response_vec) = inner_socket.receive_from_multiple(buffers, BUFFER_LENGTH) {
-            log::trace!("Received {} responses", response_vec.len());
-            response_vec
-                .iter()
-                .enumerate()
-                .for_each(|(i, (result, socket_address, datetime))| {
-                    let received_bytes = &buffers[i][..*result];
-                    let twamp_test_message: &Result<(ReflectedMessage, usize), CommonError> =
-                        &ReflectedMessage::try_from_be_bytes(received_bytes).map_err(|e| e.into());
-                    log::debug!("Twamp Response Message {:?}", twamp_test_message);
-                    if let Ok(twamp_message) = twamp_test_message {
-                        if let Ok(rw_lock_write_guard) = &rx_sessions.try_write() {
-                            log::trace!(
-                                "Obtained write lock, looking for session {}",
-                                socket_address
-                            );
-                            let borrowed_sessions = rw_lock_write_guard;
-                            let session_option = borrowed_sessions
-                                .iter()
-                                .find(|session| session.tx_socket_address == *socket_address);
-                            if let Some(session) = session_option {
-                                log::debug!("Received from session {}", session.tx_socket_address);
-                                let _ =
-                                    session.add_to_received(twamp_message.0.to_owned(), *datetime);
-                                // let latest_result = session.get_latest_result();
+        let buffer = &mut [0u8; DEFAULT_BUFFER_SIZE];
+        while let Ok((result, socket_address, datetime)) = inner_socket.receive_from(buffer) {
+            let received_bytes = &buffer[..result as usize];
+            let twamp_test_message: &Result<(ReflectedMessage, usize), CommonError> =
+                &ReflectedMessage::try_from_be_bytes(received_bytes).map_err(|e| e.into());
+            log::info!("Twamp Response Message {:?}", twamp_test_message);
+            if let Ok(twamp_message) = twamp_test_message {
+                if let Ok(rw_lock_write_guard) = &rx_sessions.try_write() {
+                    log::trace!(
+                        "Obtained write lock, looking for session {}",
+                        socket_address
+                    );
+                    let borrowed_sessions = rw_lock_write_guard;
+                    let session_option = borrowed_sessions
+                        .iter()
+                        .find(|session| session.tx_socket_address == socket_address);
+                    if let Some(session) = session_option {
+                        log::debug!("Received from session {}", session.tx_socket_address);
+                        let _ = session.add_to_received(twamp_message.0.to_owned(), datetime);
+                        // let latest_result = session.get_latest_result();
 
-                                // if let Ok(json_result) =
-                                //     serde_json::to_string_pretty(&latest_result)
-                                // {
-                                //     log::info!("Latest {}", json_result);
-                                // }
-                            }
-                        }
+                        // if let Ok(json_result) =
+                        //     serde_json::to_string_pretty(&latest_result)
+                        // {
+                        //     log::info!("Latest {}", json_result);
+                        // }
                     }
-                });
+                }
+            }
         }
         Ok(0)
     }
