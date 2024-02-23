@@ -2,6 +2,6 @@
 linker = "/usr/bin/clang"
 rustflags = ["-C", "link-arg=--ld-path=/usr/bin/mold"]
 
-[target.x86_64-unknown-linux-gnu]
-linker = "/usr/bin/clang"
-rustflags = ["-C", "link-arg=--ld-path=/usr/bin/mold"]
+# [target.x86_64-unknown-linux-gnu]
+# linker = "/usr/bin/clang"
+# rustflags = ["-C", "link-arg=--ld-path=/usr/bin/mold"]
