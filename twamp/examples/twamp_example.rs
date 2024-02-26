@@ -35,10 +35,7 @@ impl App {
             },
         };
 
-        log::info!(
-            "Result {:#}",
-            serde_json::to_string_pretty(&result).unwrap()
-        );
+        log::info!("Result {:#}", serde_json::to_string(&result).unwrap());
 
         Ok(())
     }

@@ -1,12 +1,12 @@
 {
   "test_session_hosts": [
-    "172.17.0.3:45571"
+    "10.16.128.220:60001"
   ],
   "mode": "LIGHT_SENDER",
-  "source_ip_address": "127.0.0.1:45573",
-  "collection_period": 1,
-  "packet_interval": 150,
-  "padding": 41,
+  "source_ip_address": "172.17.0.2:50000",
+  "collection_period": 2,
+  "packet_interval": 250,
+  "padding": 160,
   "ref_wait": 1,
   "last_message_timeout": 1
 }

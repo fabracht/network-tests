@@ -20,7 +20,7 @@ pub struct Configuration {
     pub last_message_timeout: u64,
 }
 
-const NETWORK_PRECISION: i32 = 3;
+const NETWORK_PRECISION: i32 = 0;
 
 impl Configuration {
     pub fn new(

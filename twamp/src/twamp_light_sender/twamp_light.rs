@@ -27,9 +27,6 @@ use std::{
 
 use super::result::{NetworkStatistics, SessionResult, TwampResult};
 
-/// The length of the iovec buffer for recvmmsg
-const BUFFER_LENGTH: usize = 1;
-
 pub struct SessionSender {
     /// List of host on which runs a reflecctors to perform the test
     pub targets: Vec<SocketAddr>,
@@ -157,12 +154,16 @@ pub fn calculate_session_results(
             let mut f_owd_vec = Vec::new();
             let mut b_owd_vec = Vec::new();
             let mut rpd_vec = Vec::new();
+            let mut forward_jitter_vec = Vec::new();
+            let mut backward_jitter_vec = Vec::new();
 
             let mut rtt_sum = 0.0;
             let mut f_owd_sum = 0.0;
             let mut b_owd_sum = 0.0;
             let mut rpd_sum = 0.0;
 
+            let mut prev_forward_owd: Option<f64> = None;
+            let mut prev_backward_owd: Option<f64> = None;
             for packet in packets.iter() {
                 if let Some(rtt) = packet.calculate_rtt() {
                     let rtt = rtt.as_nanos() as f64;
@@ -174,12 +175,26 @@ pub fn calculate_session_results(
                     let owd = owd.as_nanos() as f64;
                     f_owd_vec.push(owd);
                     f_owd_sum += owd;
+
+                    // Calculate forward jitter
+                    if let Some(prev_fwd) = prev_forward_owd {
+                        let fwd_jitter = (owd - prev_fwd).abs();
+                        forward_jitter_vec.push(fwd_jitter);
+                    }
+                    prev_forward_owd = Some(owd);
                 }
 
                 if let Some(owd) = packet.calculate_owd_backward() {
                     let owd = owd.as_nanos() as f64;
                     b_owd_vec.push(owd);
                     b_owd_sum += owd;
+
+                    // Calculate backward jitter
+                    if let Some(prev_bwd) = prev_backward_owd {
+                        let bwd_jitter = (owd - prev_bwd).abs();
+                        backward_jitter_vec.push(bwd_jitter);
+                    }
+                    prev_backward_owd = Some(owd);
                 }
 
                 if let Some(rpd) = packet.calculate_rpd() {
@@ -194,6 +209,8 @@ pub fn calculate_session_results(
             f_owd_vec.sort_by(|a, b| a.total_cmp(b));
             b_owd_vec.sort_by(|a, b| a.total_cmp(b));
             rpd_vec.sort_by(|a, b| a.total_cmp(b));
+            forward_jitter_vec.sort_by(|a, b| a.total_cmp(b));
+            backward_jitter_vec.sort_by(|a, b| a.total_cmp(b));
 
             let gamlr_offset = session.calculate_gamlr_offset(&f_owd_vec, &b_owd_vec);
             let avg_rtt = if total_packets > 0 {
@@ -216,6 +233,24 @@ pub fn calculate_session_results(
             } else {
                 None
             };
+            let avg_forward_jitter = if !forward_jitter_vec.is_empty() {
+                Some(forward_jitter_vec.iter().sum::<f64>() / forward_jitter_vec.len() as f64)
+            } else {
+                None
+            };
+            let avg_backward_jitter = if !backward_jitter_vec.is_empty() {
+                Some(backward_jitter_vec.iter().sum::<f64>() / backward_jitter_vec.len() as f64)
+            } else {
+                None
+            };
+            let std_dev_forward_jitter = calculate_std_dev(
+                &forward_jitter_vec,
+                forward_jitter_vec.iter().sum::<f64>() / forward_jitter_vec.len() as f64,
+            );
+            let std_dev_backward_jitter = calculate_std_dev(
+                &backward_jitter_vec,
+                backward_jitter_vec.iter().sum::<f64>() / backward_jitter_vec.len() as f64,
+            );
             let network_results = NetworkStatistics {
                 avg_rtt,
                 min_rtt: rtt_vec.iter().min_by(|a, b| a.total_cmp(b)).copied(),
@@ -251,6 +286,10 @@ pub fn calculate_session_results(
                 median_process_time: median(&rpd_vec),
                 low_percentile_process_time: percentile(&rpd_vec, 25.0),
                 high_percentile_process_time: percentile(&rpd_vec, 75.0),
+                avg_forward_jitter,
+                avg_backward_jitter,
+                std_dev_forward_jitter,
+                std_dev_backward_jitter,
                 forward_loss,
                 backward_loss,
                 total_loss,
@@ -384,42 +423,35 @@ pub fn create_rx_callback(
     rx_sessions: Arc<RwLock<Vec<Session>>>,
 ) -> impl Fn(&mut TimestampedUdpSocket, Token) -> Result<isize, CommonError> {
     move |inner_socket, _| {
-        let buffers = &mut [[0u8; DEFAULT_BUFFER_SIZE]; BUFFER_LENGTH];
-        while let Ok(response_vec) = inner_socket.receive_from_multiple(buffers, BUFFER_LENGTH) {
-            log::trace!("Received {} responses", response_vec.len());
-            response_vec
-                .iter()
-                .enumerate()
-                .for_each(|(i, (result, socket_address, datetime))| {
-                    let received_bytes = &buffers[i][..*result];
-                    let twamp_test_message: &Result<(ReflectedMessage, usize), CommonError> =
-                        &ReflectedMessage::try_from_be_bytes(received_bytes).map_err(|e| e.into());
-                    log::debug!("Twamp Response Message {:?}", twamp_test_message);
-                    if let Ok(twamp_message) = twamp_test_message {
-                        if let Ok(rw_lock_write_guard) = &rx_sessions.try_write() {
-                            log::trace!(
-                                "Obtained write lock, looking for session {}",
-                                socket_address
-                            );
-                            let borrowed_sessions = rw_lock_write_guard;
-                            let session_option = borrowed_sessions
-                                .iter()
-                                .find(|session| session.tx_socket_address == *socket_address);
-                            if let Some(session) = session_option {
-                                log::debug!("Received from session {}", session.tx_socket_address);
-                                let _ =
-                                    session.add_to_received(twamp_message.0.to_owned(), *datetime);
-                                // let latest_result = session.get_latest_result();
+        let buffer = &mut [0u8; DEFAULT_BUFFER_SIZE];
+        while let Ok((result, socket_address, datetime)) = inner_socket.receive_from(buffer) {
+            let received_bytes = &buffer[..result as usize];
+            let twamp_test_message: &Result<(ReflectedMessage, usize), CommonError> =
+                &ReflectedMessage::try_from_be_bytes(received_bytes).map_err(|e| e.into());
+            log::trace!("Twamp Response Message {:?}", twamp_test_message);
+            if let Ok(twamp_message) = twamp_test_message {
+                if let Ok(rw_lock_write_guard) = &rx_sessions.try_write() {
+                    log::trace!(
+                        "Obtained write lock, looking for session {}",
+                        socket_address
+                    );
+                    let borrowed_sessions = rw_lock_write_guard;
+                    let session_option = borrowed_sessions
+                        .iter()
+                        .find(|session| session.tx_socket_address == socket_address);
+                    if let Some(session) = session_option {
+                        log::debug!("Received from session {}", session.tx_socket_address);
+                        let _ = session.add_to_received(twamp_message.0.to_owned(), datetime);
+                        // let latest_result = session.get_latest_result();
 
-                                // if let Ok(json_result) =
-                                //     serde_json::to_string_pretty(&latest_result)
-                                // {
-                                //     log::trace!("Latest {}", json_result);
-                                // }
-                            }
-                        }
+                        // if let Ok(json_result) =
+                        //     serde_json::to_string_pretty(&latest_result)
+                        // {
+                        //     log::info!("Latest {}", json_result);
+                        // }
                     }
-                });
+                }
+            }
         }
         Ok(0)
     }
