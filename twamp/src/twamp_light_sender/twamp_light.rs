@@ -27,9 +27,6 @@ use std::{
 
 use super::result::{NetworkStatistics, SessionResult, TwampResult};
 
-/// The length of the iovec buffer for recvmmsg
-const BUFFER_LENGTH: usize = 1;
-
 pub struct SessionSender {
     /// List of host on which runs a reflecctors to perform the test
     pub targets: Vec<SocketAddr>,
@@ -167,9 +164,7 @@ pub fn calculate_session_results(
 
             let mut prev_forward_owd: Option<f64> = None;
             let mut prev_backward_owd: Option<f64> = None;
-            log::info!("Packets len {}", packets.len());
             for packet in packets.iter() {
-                log::info!("packet {:?}", packet);
                 if let Some(rtt) = packet.calculate_rtt() {
                     let rtt = rtt.as_nanos() as f64;
                     rtt_vec.push(rtt);
@@ -433,7 +428,7 @@ pub fn create_rx_callback(
             let received_bytes = &buffer[..result as usize];
             let twamp_test_message: &Result<(ReflectedMessage, usize), CommonError> =
                 &ReflectedMessage::try_from_be_bytes(received_bytes).map_err(|e| e.into());
-            log::info!("Twamp Response Message {:?}", twamp_test_message);
+            log::trace!("Twamp Response Message {:?}", twamp_test_message);
             if let Ok(twamp_message) = twamp_test_message {
                 if let Ok(rw_lock_write_guard) = &rx_sessions.try_write() {
                     log::trace!(
