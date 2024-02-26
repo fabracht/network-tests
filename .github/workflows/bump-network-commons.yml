@@ -6,6 +6,16 @@ on:
       - closed
     paths:
       - 'network_commons/**'
+  workflow_dispatch:
+    inputs:
+      version_component:
+        description: 'Version component to bump (major, minor, patch)'
+        required: false
+        type: choice
+        options:
+          - major
+          - minor
+          - patch
 
 jobs:
   bump_version:
@@ -21,11 +31,15 @@ jobs:
       - name: Extract version component
         id: extract_version
         run: |
-            PR_TITLE="${{ github.event.pull_request.title }}"
-            VERSION_COMPONENT=$(echo $PR_TITLE | grep -oP '^(major|minor|patch)')
-            if [ -z "$VERSION_COMPONENT" ]; then
-            echo "PR title is not properly formatted or does not contain a semver tag. Please include 'major', 'minor', or 'patch' at the beginning of the title."
-            exit 1
+            if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ github.event.inputs.version_component }}" != "" ]]; then
+              VERSION_COMPONENT="${{ github.event.inputs.version_component }}"
+            else
+              PR_TITLE="${{ github.event.pull_request.title }}"
+              VERSION_COMPONENT=$(echo $PR_TITLE | grep -oP '^(major|minor|patch)')
+              if [ -z "$VERSION_COMPONENT" ]; then
+                echo "PR title is not properly formatted or does not contain a semver tag. Please include 'major', 'minor', or 'patch' at the beginning of the title."
+                exit 1
+              fi
             fi
             echo "::set-output name=version_component::$VERSION_COMPONENT"
 
