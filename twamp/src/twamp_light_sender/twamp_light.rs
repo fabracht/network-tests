@@ -146,7 +146,10 @@ pub fn calculate_session_results(
         .iter()
         .map(|session| -> Result<SessionResult, CommonError> {
             let packets = session.results.try_read()?;
-            let total_packets = packets.len();
+            let total_packets = packets
+                .iter()
+                .filter(|packet_results| packet_results.t2.is_some() && packet_results.t3.is_some())
+                .count();
             let (forward_loss, backward_loss, total_loss) =
                 session.analyze_packet_loss().unwrap_or_default();
 
@@ -164,7 +167,10 @@ pub fn calculate_session_results(
 
             let mut prev_forward_owd: Option<f64> = None;
             let mut prev_backward_owd: Option<f64> = None;
-            for packet in packets.iter() {
+            for packet in packets
+                .iter()
+                .filter(|packet_results| packet_results.t2.is_some() && packet_results.t3.is_some())
+            {
                 if let Some(rtt) = packet.calculate_rtt() {
                     let rtt = rtt.as_nanos() as f64;
                     rtt_vec.push(rtt);
@@ -444,9 +450,7 @@ pub fn create_rx_callback(
                         let _ = session.add_to_received(twamp_message.0.to_owned(), datetime);
                         // let latest_result = session.get_latest_result();
 
-                        // if let Ok(json_result) =
-                        //     serde_json::to_string_pretty(&latest_result)
-                        // {
+                        // if let Ok(json_result) = serde_json::to_string_pretty(&latest_result) {
                         //     log::info!("Latest {}", json_result);
                         // }
                     }
